@@ -1,7 +1,7 @@
 import 'server-only';
 import {createServerSupabaseClient} from '@/lib/supabase';
 import {normalizeCandidateImageUrl, signCandidateImageUrls} from '@/lib/server/candidate-images';
-import type {ElectionEvent, ElectionResult, ElectionSummary, EligibleVoter, Position} from '@/lib/election-data';
+import type {ElectionEvent, ElectionResult, ElectionSummary, EligibleVoter, IndividualVoteRecord, Position} from '@/lib/election-data';
 
 export type ElectionAvailability = Pick<ElectionEvent, 'ballotSlug' | 'title' | 'status' | 'opensAt' | 'closesAt'>;
 
@@ -16,6 +16,17 @@ function assertData<T>(data: T | null, error: {message: string} | null): T {
   if (error) throw new Error(error.message);
   if (data === null) throw new Error('Supabase returned no data.');
   return data;
+}
+
+async function fetchAllRows<T>(loadPage: (from: number, to: number) => PromiseLike<{data: T[] | null; error: {message: string} | null}>): Promise<T[]> {
+  const pageSize = 500;
+  const rows: T[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await loadPage(offset, offset + pageSize - 1);
+    const batch = assertData(page.data, page.error);
+    rows.push(...batch);
+    if (batch.length < pageSize) return rows;
+  }
 }
 
 async function mapElection(row: any): Promise<ElectionEvent> {
@@ -41,19 +52,20 @@ async function mapElection(row: any): Promise<ElectionEvent> {
     })),
   }));
   return {
-    id: row.id, ballotSlug: row.ballot_slug, title: row.title, description: row.description,
+    id: row.id, ballotSlug: row.ballot_slug, anonymousVoting: row.anonymous_voting ?? true, title: row.title, description: row.description,
     status: statusFromDb[row.status] ?? 'Draft', electionDate: row.election_date ?? '', opensAt: row.opens_at ?? '', closesAt: row.closes_at ?? '',
     eligibleVoters, ballotsSubmitted, positions,
   };
 }
 
 const electionSelect = '*, positions(*, nominees(*)), eligible_voters(count), anonymous_ballots(count)';
-const electionSummarySelect = 'id, ballot_slug, title, description, status, election_date, opens_at, closes_at, positions(count), eligible_voters(count), anonymous_ballots(count)';
+const electionSummarySelect = 'id, ballot_slug, anonymous_voting, title, description, status, election_date, opens_at, closes_at, positions(count), eligible_voters(count), anonymous_ballots(count)';
 
 function mapElectionSummary(row: any): ElectionSummary {
   return {
     id: row.id,
     ballotSlug: row.ballot_slug,
+    anonymousVoting: row.anonymous_voting ?? true,
     title: row.title,
     description: row.description,
     status: statusFromDb[row.status] ?? 'Draft',
@@ -70,8 +82,15 @@ export async function listElections(options?: {publicOnly?: boolean}): Promise<E
   const supabase = createServerSupabaseClient();
   let query = supabase.from('elections').select(electionSummarySelect).eq('eligible_voters.eligible', true).order('created_at', {ascending: false});
   if (options?.publicOnly) query = query.in('status', ['open', 'closed', 'published']);
-  const {data, error} = await query;
-  const rows = assertData(data, error);
+  const response = await query;
+  if (response.error?.code === '42703' && response.error.message.includes('anonymous_voting')) {
+    const legacySelect = electionSummarySelect.replace('anonymous_voting, ', '');
+    let legacyQuery = supabase.from('elections').select(legacySelect).eq('eligible_voters.eligible', true).order('created_at', {ascending: false});
+    if (options?.publicOnly) legacyQuery = legacyQuery.in('status', ['open', 'closed', 'published']);
+    const legacy = await legacyQuery;
+    return (assertData(legacy.data, legacy.error) as any[]).map(mapElectionSummary);
+  }
+  const rows = assertData(response.data, response.error);
   return (rows as any[]).map(mapElectionSummary);
 }
 
@@ -109,8 +128,9 @@ export async function getElectionResults(identifier: string, publicOnly = false)
   const election = await getElection(identifier, {publicOnly});
   if (!election) return null;
   const supabase = createServerSupabaseClient();
-  const {data, error} = await supabase.from('ballot_selections').select('position_id, nominee_id, is_abstain, anonymous_ballots!inner(election_id)').eq('anonymous_ballots.election_id', election.id);
-  const selections = assertData(data, error);
+  const selections = await fetchAllRows((from, to) => supabase.from('ballot_selections')
+    .select('id, position_id, nominee_id, is_abstain, anonymous_ballots!inner(election_id)')
+    .eq('anonymous_ballots.election_id', election.id).order('id').range(from, to));
   const results: ElectionResult[] = election.positions.map((position) => {
     const rows = selections.filter((selection: any) => selection.position_id === position.id);
     return {
@@ -120,6 +140,45 @@ export async function getElectionResults(identifier: string, publicOnly = false)
     };
   });
   return {election, results};
+}
+
+export async function getIndividualElectionResults(identifier: string): Promise<IndividualVoteRecord[] | null> {
+  const election = await getElection(identifier);
+  if (!election) return null;
+  if (election.anonymousVoting) throw new Error('Individual records are not available for an anonymous election.');
+
+  const supabase = createServerSupabaseClient();
+  const submittedBallots = await fetchAllRows((from, to) => supabase.from('anonymous_ballots')
+    .select('id, eligible_voter_id, submitted_at')
+    .eq('election_id', election.id)
+    .not('eligible_voter_id', 'is', null)
+    .order('submitted_at', {ascending: false}).order('id').range(from, to));
+  if (!submittedBallots.length) return [];
+
+  const [voters, selections] = await Promise.all([
+    fetchAllRows((from, to) => supabase.from('eligible_voters').select('id, member_id, first_name, last_name')
+      .eq('election_id', election.id).order('id').range(from, to)),
+    fetchAllRows((from, to) => supabase.from('ballot_selections')
+      .select('id, anonymous_ballot_id, position_id, nominee_id, is_abstain, anonymous_ballots!inner(election_id)')
+      .eq('anonymous_ballots.election_id', election.id).order('id').range(from, to)),
+  ]);
+  const voterById = new Map(voters.map((voter) => [voter.id, voter]));
+  const ballotById = new Map(submittedBallots.map((ballot) => [ballot.id, ballot]));
+  const positionById = new Map(election.positions.map((position) => [position.id, position]));
+
+  return selections.map((selection) => {
+    const ballot = ballotById.get(selection.anonymous_ballot_id);
+    const voter = ballot?.eligible_voter_id ? voterById.get(ballot.eligible_voter_id) : undefined;
+    const position = positionById.get(selection.position_id);
+    return {
+      id: selection.id,
+      memberId: voter?.member_id ?? 'Unknown',
+      voterName: voter ? `${voter.first_name} ${voter.last_name}` : 'Unknown voter',
+      submittedAt: ballot?.submitted_at ?? '',
+      position: position?.name ?? 'Unknown position',
+      choice: selection.is_abstain ? 'Abstain' : position?.nominees.find((nominee) => nominee.id === selection.nominee_id)?.name ?? 'Unknown candidate',
+    };
+  }).sort((left, right) => right.submittedAt.localeCompare(left.submittedAt));
 }
 
 export async function getElectionVoters(electionId: string): Promise<EligibleVoter[]> {
@@ -141,6 +200,9 @@ export async function getElectionVoters(electionId: string): Promise<EligibleVot
 
 export async function syncElection(election: ElectionEvent, voters?: EligibleVoter[]) {
   const supabase = createServerSupabaseClient();
+  const {error: anonymitySchemaError} = await supabase.from('elections').select('anonymous_voting').limit(0);
+  if (anonymitySchemaError?.code === '42703') throw new Error('Anonymous voting settings need the latest database migration before elections can be saved.');
+  if (anonymitySchemaError) throw new Error(anonymitySchemaError.message);
   if (election.positions.some((position) => position.votingRule?.type === 'custom')) {
     const {error: schemaError} = await supabase.from('positions').select('voting_rule').limit(0);
     if (schemaError?.code === '42703') throw new Error('Custom voting filters need the latest database migration before they can be saved.');

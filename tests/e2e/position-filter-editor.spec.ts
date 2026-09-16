@@ -5,7 +5,7 @@ test('position editor saves CSV filters and limits them to five', async ({page})
   const eventId = '11111111-1111-4111-8111-111111111111';
   let election = {
     id: eventId, ballotSlug: 'filter-regression', title: 'Filter regression', description: 'Test election',
-    status: 'Draft', electionDate: '', opensAt: '', closesAt: '', eligibleVoters: 1,
+    status: 'Draft', anonymousVoting: true, electionDate: '', opensAt: '', closesAt: '', eligibleVoters: 1,
     eligibleVoterIds: ['YWAP-1'], ballotsSubmitted: 0, positions: [] as Array<Record<string, unknown>>,
   };
   const voters = [{memberId: 'YWAP-1', name: 'Test Voter', firstName: 'Test', lastName: 'Voter',
@@ -28,6 +28,7 @@ test('position editor saves CSV filters and limits them to five', async ({page})
   await page.getByPlaceholder('What will this person be responsible for?').fill('Listen to members.');
   await page.getByRole('combobox', {name: 'Who can vote for this position'}).click();
   await page.getByRole('option', {name: 'Custom Filter'}).click();
+  await expect(page.getByText('Filter', {exact: true})).toBeVisible();
   await page.getByRole('combobox', {name: 'Filter 1 CSV column'}).click();
   await page.getByRole('option', {name: 'department'}).click();
   await page.getByRole('textbox', {name: 'Filter 1 value'}).fill('North District');
@@ -35,6 +36,8 @@ test('position editor saves CSV filters and limits them to five', async ({page})
 
   for (let index = 2; index <= 5; index += 1) await page.getByRole('button', {name: 'Add filter'}).click();
   await expect(page.getByRole('button', {name: 'Add filter'})).toBeDisabled();
+  await expect(page.getByRole('dialog', {name: 'Add a position'}).getByRole('button', {name: 'Save position'})).toBeInViewport();
+  await expect(page.getByRole('button', {name: 'Remove filter 5'})).toHaveText('Remove');
   for (let index = 5; index >= 2; index -= 1) await page.getByRole('button', {name: `Remove filter ${index}`}).click();
   await page.getByRole('button', {name: 'Save position'}).click();
   await expect(page.getByRole('heading', {name: 'District Representative'})).toBeVisible();
@@ -44,6 +47,16 @@ test('position editor saves CSV filters and limits them to five', async ({page})
   await page.getByRole('menuitem', {name: 'Edit position'}).click();
   await expect(page.getByRole('combobox', {name: 'Who can vote for this position'})).toContainText('Custom Filter');
   await expect(page.getByRole('textbox', {name: 'Filter 1 value'})).toHaveValue('North District');
+  await expect(page.getByRole('checkbox', {name: 'Anonymous voting'})).toBeChecked();
+  await page.getByRole('checkbox', {name: 'Anonymous voting'}).uncheck();
+  await page.getByRole('button', {name: 'Save position changes'}).click();
+  await expect.poll(() => election.anonymousVoting).toBe(false);
+
+  election = {...election, status: 'Scheduled'};
+  await page.reload();
+  await page.getByRole('button', {name: 'Manage District Representative'}).click();
+  await page.getByRole('menuitem', {name: 'Edit position'}).click();
+  await expect(page.getByRole('checkbox', {name: 'Anonymous voting'})).toBeDisabled();
 });
 
 test('ballot refreshes eligibility and omits a position the voter cannot vote for', async ({page}) => {
@@ -55,7 +68,7 @@ test('ballot refreshes eligibility and omits a position the voter cannot vote fo
       nominees: [{id: 'candidate-2', name: 'Other Candidate', profile: 'Candidate'}]},
   ];
   const election = {id: '11111111-1111-4111-8111-111111111111', ballotSlug: slug, title: 'Filter regression',
-    description: 'Test election', status: 'Open', electionDate: '', opensAt: '', closesAt: '',
+    description: 'Test election', status: 'Open', anonymousVoting: true, electionDate: '', opensAt: '', closesAt: '',
     eligibleVoters: 1, ballotsSubmitted: 0, positions};
   await page.addInitScript(() => {
     window.sessionStorage.setItem('ywap-voter-session', JSON.stringify({memberId: 'YWAP-1', firstName: 'Test', ageGroup: 'Young Adults',

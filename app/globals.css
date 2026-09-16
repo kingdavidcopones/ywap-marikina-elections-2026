@@ -569,7 +569,7 @@ progress::-moz-progress-bar {
   flex-wrap: wrap;
 }
 
-.admin-live-result > .astryx-grid {
+.admin-live-result [role="tabpanel"] {
   margin-top: var(--spacing-6);
 }
 

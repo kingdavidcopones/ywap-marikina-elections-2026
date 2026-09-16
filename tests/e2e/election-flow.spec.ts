@@ -39,7 +39,7 @@ test('admin creates an election, a voter casts once, and totals stay anonymous',
   const nomineeId = crypto.randomUUID();
   const now = Date.now();
   const election = {
-    id: eventId, ballotSlug: slug, title: electionTitle, description: 'End-to-end verification election.', status: 'Open',
+    id: eventId, ballotSlug: slug, title: electionTitle, description: 'End-to-end verification election.', status: 'Open', anonymousVoting: true,
     electionDate: new Date(now).toISOString().slice(0, 10), opensAt: new Date(now - 60_000).toISOString(), closesAt: new Date(now + 3_600_000).toISOString(),
     eligibleVoters: voters.length, eligibleVoterIds: voters.map((voter) => voter.memberId), ballotsSubmitted: 0,
     positions: [{id: positionId, name: 'President', group: 'General', description: 'Leads the organization.', responsibilities: ['Lead responsibly.'], abstainEnabled: true,

@@ -76,7 +76,7 @@ export function BallotReview() {
         setIsSubmitDialogOpen(false);
         return;
       }
-      markSubmitted(body.submittedAt, election?.title, voter?.ballotSlug);
+      markSubmitted(body.submittedAt, election?.title, voter?.ballotSlug, election?.anonymousVoting);
       router.push('/vote/confirmation');
     } catch (cause) {
       if (isNetworkError(cause)) reportNetworkError();
@@ -142,8 +142,17 @@ export function BallotReview() {
 
             <Card variant="yellow" padding={6}>
               <VStack gap={2}>
-                <Heading level={3}>Your choices stay private</Heading>
-                <Text as="p">We record that you voted, but keep that record separate from the choices on your ballot.</Text>
+                {election.anonymousVoting ? (
+                  <>
+                    <Heading level={3}>Your choices stay private</Heading>
+                    <Text as="p">We record that you voted, but keep that record separate from the choices on your ballot.</Text>
+                  </>
+                ) : (
+                  <>
+                    <Heading level={3}>Your choices are recorded with your identity</Heading>
+                    <Text as="p">Election administrators can see your choices together with your name and member ID after you submit.</Text>
+                  </>
+                )}
               </VStack>
             </Card>
 

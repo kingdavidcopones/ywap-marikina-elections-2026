@@ -32,20 +32,22 @@ export function BallotConfirmation() {
       }
 
       let electionTitle = savedReceipt.electionTitle;
-      const ballotSlug = getVoterSession()?.ballotSlug;
+      let anonymousVoting = savedReceipt.anonymousVoting;
+      const ballotSlug = savedReceipt.ballotSlug ?? getVoterSession()?.ballotSlug;
 
-      if (!electionTitle && ballotSlug) {
+      if ((!electionTitle || anonymousVoting === undefined) && ballotSlug) {
         try {
           const election = await fetchElection(ballotSlug);
           electionTitle = election.title;
-          markSubmitted(savedReceipt.submittedAt, electionTitle, ballotSlug);
+          anonymousVoting = election.anonymousVoting;
+          markSubmitted(savedReceipt.submittedAt, electionTitle, ballotSlug, anonymousVoting);
         } catch {
           // Keep the confirmation available even if the election lookup fails.
         }
       }
 
       if (isActive) {
-        setReceipt({...savedReceipt, ...(electionTitle ? {electionTitle} : {})});
+        setReceipt({...savedReceipt, ...(electionTitle ? {electionTitle} : {}), ...(typeof anonymousVoting === 'boolean' ? {anonymousVoting} : {})});
       }
     }
 
@@ -80,7 +82,9 @@ export function BallotConfirmation() {
                 <dd>Recorded</dd>
               </dl>
               <Text type="supporting" color="secondary" as="p">
-                To protect your privacy, we don’t show your choices or create a code that could be linked back to them.
+                {receipt.anonymousVoting === false
+                  ? 'Election administrators can see your choices together with your name and member ID. Your ballot has been recorded.'
+                  : 'To protect your privacy, we don’t show your choices or create a code that could be linked back to them.'}
               </Text>
               <Button label="Done" href="/" variant="primary" width="100%" />
             </VStack>

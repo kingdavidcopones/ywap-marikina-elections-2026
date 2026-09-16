@@ -14,10 +14,16 @@ import {HStack, VStack} from '@astryxdesign/core/Layout';
 import {Icon} from '@astryxdesign/core/Icon';
 import {ProgressBar} from '@astryxdesign/core/ProgressBar';
 import {Section} from '@astryxdesign/core/Section';
+import {Tab, TabList} from '@astryxdesign/core/TabList';
+import {Table, pixel, proportional} from '@astryxdesign/core/Table';
 import {Text} from '@astryxdesign/core/Text';
-import type {ElectionEvent, ElectionResult} from '@/lib/election-data';
-import {fetchResults} from '@/lib/api';
+import type {ElectionEvent, ElectionResult, IndividualVoteRecord} from '@/lib/election-data';
+import {fetchIndividualResults, fetchResults} from '@/lib/api';
 import {LiveResultSkeleton} from '@/components/loading-states';
+
+const submittedAtFormatter = new Intl.DateTimeFormat('en-PH', {
+  dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila',
+});
 
 function statusVariant(status: ElectionEvent['status']) {
   if (status === 'Open' || status === 'Published') return 'success' as const;
@@ -31,10 +37,16 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
   const [isReady, setIsReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshMessage, setRefreshMessage] = useState('');
+  const [view, setView] = useState<'summary' | 'individual'>('summary');
+  const [individualRecords, setIndividualRecords] = useState<IndividualVoteRecord[]>([]);
+  const [individualLoading, setIndividualLoading] = useState(false);
+  const [individualError, setIndividualError] = useState<string | null>(null);
 
   useEffect(() => {
     setIsReady(false);
     setLoadError(null);
+    setView('summary');
+    setIndividualRecords([]);
     void fetchResults(eventId).then((payload) => {
       setEvent(payload.election);
       setResults(payload.results);
@@ -46,11 +58,30 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
     });
   }, [eventId]);
 
+  useEffect(() => {
+    if (view !== 'individual' || !event || event.anonymousVoting) return;
+    let active = true;
+    setIndividualLoading(true);
+    setIndividualError(null);
+    void fetchIndividualResults(event.id).then((records) => {
+      if (active) setIndividualRecords(records);
+    }).catch((cause) => {
+      if (active) setIndividualError(cause instanceof Error ? cause.message : 'Individual records could not be loaded.');
+    }).finally(() => {
+      if (active) setIndividualLoading(false);
+    });
+    return () => { active = false; };
+  }, [view, event?.id, event?.anonymousVoting]);
+
   async function refreshResults() {
     try {
       const payload = await fetchResults(eventId);
       setEvent(payload.election);
       setResults(payload.results);
+      if (view === 'individual' && !payload.election.anonymousVoting) {
+        setIndividualRecords(await fetchIndividualResults(eventId));
+        setIndividualError(null);
+      }
       setRefreshMessage('Results refreshed just now.');
     } catch {
       setRefreshMessage('Results could not be refreshed. Try again.');
@@ -91,7 +122,9 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
                 label={event.status === 'Open' || event.status === 'Published' ? 'Live results' : `${event.status} results`}
               />
             </HStack>
-            <Text color="secondary">Totals are grouped by position and never reveal an individual voter’s choices.</Text>
+            <Text color="secondary">{event.anonymousVoting
+              ? 'Totals are grouped by position and never reveal an individual voter’s choices.'
+              : 'Totals are grouped by position. Open Individual to see each voter’s recorded choices.'}</Text>
           </VStack>
         </VStack>
         <VStack gap={2} hAlign="end">
@@ -115,6 +148,14 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
         <article><Text type="supporting" color="secondary">Positions counted</Text><Text type="display-3" hasTabularNumbers>{results.length} / {event.positions.length}</Text></article>
       </section>
 
+      {!event.anonymousVoting ? (
+        <TabList value={view} onChange={(value) => setView(value as 'summary' | 'individual')} role="tablist" hasDivider>
+          <Tab value="summary" label="Summary" panelId="live-summary-panel" />
+          <Tab value="individual" label="Individual" panelId="live-individual-panel" />
+        </TabList>
+      ) : null}
+
+      {(event.anonymousVoting || view === 'summary') ? <section id="live-summary-panel" role={event.anonymousVoting ? undefined : 'tabpanel'} aria-label="Summary">
       {results.length ? (
         <Grid columns={{minWidth: 320, max: 2, repeat: 'fit'}} gap={5}>
           {results.map((result) => {
@@ -173,6 +214,36 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
             description="Results will appear here after this election has positions and submitted ballots."
           />
         </Section>
+      )}
+      </section> : (
+        <section id="live-individual-panel" role="tabpanel" aria-label="Individual vote records">
+          {individualLoading ? (
+            <Text color="secondary">Loading individual vote records…</Text>
+          ) : individualError ? (
+            <EmptyState title="Individual records could not be loaded" description={individualError} />
+          ) : individualRecords.length ? (
+            <section className="table-surface" aria-label="Individual vote records" tabIndex={0}>
+              <Table<IndividualVoteRecord>
+                data={individualRecords.map((record) => ({
+                  ...record,
+                  submittedAt: submittedAtFormatter.format(new Date(record.submittedAt)),
+                }))}
+                idKey="id"
+                density="compact"
+                dividers="rows"
+                columns={[
+                  {key: 'voterName', header: 'Voter', width: proportional(1)},
+                  {key: 'memberId', header: 'Member ID', width: pixel(150)},
+                  {key: 'position', header: 'Position', width: proportional(1)},
+                  {key: 'choice', header: 'Vote', width: proportional(1)},
+                  {key: 'submittedAt', header: 'Submitted at', width: pixel(180)},
+                ]}
+              />
+            </section>
+          ) : (
+            <EmptyState title="No individual votes yet" description="Voter choices will appear here as ballots are submitted." />
+          )}
+        </section>
       )}
     </main>
   );

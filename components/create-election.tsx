@@ -164,6 +164,7 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
     const newEvent: ElectionEvent = {
       id: crypto.randomUUID(),
       ballotSlug: `${title.toLocaleLowerCase('en').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 36) || 'election'}-${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`,
+      anonymousVoting: true,
       title: title.trim(),
       description: description.trim() || 'Election details will be shared before voting opens.',
       status: 'Draft',
@@ -201,7 +202,6 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
     <>
       <Dialog isOpen={isOpen && !isVoterPreviewOpen} onOpenChange={(open) => { if (!open) closeCreationDialog(); }} purpose="required" width={560}>
         <Layout
-          height="auto"
           defaultHasDividers
           header={
             <DialogHeader
@@ -269,7 +269,6 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
 
       <Dialog isOpen={isOpen && isVoterPreviewOpen} onOpenChange={(open) => { if (!open) setIsVoterPreviewOpen(false); }} purpose="form" width={1040}>
         <Layout
-          height="auto"
           defaultHasDividers
           header={
             <DialogHeader

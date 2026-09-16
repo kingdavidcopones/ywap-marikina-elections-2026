@@ -46,6 +46,7 @@ export type Position = {
 export type ElectionEvent = {
   id: string;
   ballotSlug: string;
+  anonymousVoting: boolean;
   title: string;
   description: string;
   status: ElectionStatus;
@@ -69,6 +70,15 @@ export type ElectionResult = {
   abstentions: number;
   nominees: Array<Nominee & {votes: number}>;
 };
+
+export interface IndividualVoteRecord extends Record<string, unknown> {
+  id: string;
+  memberId: string;
+  voterName: string;
+  submittedAt: string;
+  position: string;
+  choice: string;
+}
 
 export function positionsForEventGroup(event: ElectionEvent, group: string) {
   return event.positions.filter((position) => position.group === 'General' || position.group === group);

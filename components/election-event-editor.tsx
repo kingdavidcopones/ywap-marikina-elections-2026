@@ -147,7 +147,9 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
   const [aboutRole, setAboutRole] = useState('');
   const [responsibilities, setResponsibilities] = useState(['']);
   const [votingRule, setVotingRule] = useState<VotingRule>({type: 'all', filters: []});
+  const [anonymousVoting, setAnonymousVoting] = useState(true);
   const [abstainEnabled, setAbstainEnabled] = useState(true);
+  const [isSavingPosition, setIsSavingPosition] = useState(false);
   const [selectedVoter, setSelectedVoter] = useState<VoterItem | null>(null);
   const [candidateImage, setCandidateImage] = useState<File | null>(null);
   const [voterUploadStatus, setVoterUploadStatus] = useState<UploadStatus>();
@@ -438,6 +440,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     setAboutRole('');
     setResponsibilities(['']);
     setVotingRule({type: 'all', filters: []});
+    setAnonymousVoting(election?.anonymousVoting ?? true);
     setAbstainEnabled(true);
     setEditingPositionId(null);
     setPositionErrors({});
@@ -458,13 +461,14 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     setAboutRole(position.description);
     setResponsibilities(position.responsibilities.length ? position.responsibilities : ['']);
     setVotingRule(position.votingRule?.type === 'custom' ? position.votingRule : {type: 'all', filters: []});
+    setAnonymousVoting(election?.anonymousVoting ?? true);
     setAbstainEnabled(position.abstainEnabled);
     setEditingPositionId(position.id);
     setPositionErrors({});
     setIsPositionDialogOpen(true);
   }
 
-  function savePosition(event: FormEvent<HTMLFormElement>) {
+  async function savePosition(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!election) return;
 
@@ -506,14 +510,18 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       ? election.positions.map((item) => item.id === existingPosition.id ? position : item)
       : [...election.positions, position];
     try {
-      persist({...election, positions: updatedPositions});
+      setIsSavingPosition(true);
+      const saved = await saveElection({...election, anonymousVoting, positions: updatedPositions});
+      setElection({...saved, eligibleVoterIds: election.eligibleVoterIds});
       closePositionDialog();
       toast({
         body: existingPosition ? `${position.name} was updated.` : `${position.name} was added to the ballot.`,
         uniqueID: existingPosition ? 'position-updated' : 'position-added',
       });
-    } catch {
-      toast({body: 'We couldn’t save this position. Your changes are still here—please try again.', type: 'error', uniqueID: 'position-save-error'});
+    } catch (cause) {
+      toast({body: cause instanceof Error ? cause.message : 'We couldn’t save this position. Your changes are still here—please try again.', type: 'error', uniqueID: 'position-save-error'});
+    } finally {
+      setIsSavingPosition(false);
     }
   }
 
@@ -1152,7 +1160,6 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
 
       <Dialog isOpen={isPositionDialogOpen} onOpenChange={(open) => { if (!open) closePositionDialog(); }} purpose="form" width={560}>
         <Layout
-          height="auto"
           header={
             <DialogHeader
               title={editingPositionId ? 'Edit position' : 'Add a position'}
@@ -1232,12 +1239,14 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                     />
                     {votingRule.type === 'custom' ? (
                       <VStack gap={4}>
+                        <Text weight="semibold">Filter</Text>
                         <Text type="supporting" color="secondary">Only voters whose CSV data matches these filters can vote for this position. Filters are evaluated from top to bottom.</Text>
                         {votingRule.filters.map((filter, index) => (
                           <VStack key={index} gap={2}>
                             {index > 0 ? (
                               <Selector
                                 label={`Combine filter ${index + 1} with previous filters`}
+                                isLabelHidden
                                 options={[{value: 'and', label: 'AND'}, {value: 'or', label: 'OR'}]}
                                 value={filter.join ?? 'and'}
                                 onChange={(value) => setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, join: value as 'and' | 'or'} : item)}))}
@@ -1247,6 +1256,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                               <StackItem size="fill">
                                 <Selector
                                   label={`Filter ${index + 1} CSV column`}
+                                  isLabelHidden
                                   options={filterColumns.map((column) => ({value: column, label: column.replaceAll('_', ' ')}))}
                                   placeholder={filterColumns.length ? 'Select a CSV column' : 'Upload a voter CSV first'}
                                   value={filter.column}
@@ -1258,12 +1268,13 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                                   width="100%"
                                 />
                               </StackItem>
-                              <Button label={`Remove filter ${index + 1}`} variant="ghost" isDisabled={votingRule.filters.length === 1} icon={<TrashIcon />} onClick={() => setVotingRule((current) => ({...current, filters: current.filters.filter((_, itemIndex) => itemIndex !== index)}))} />
+                              <Button label={`Remove filter ${index + 1}`} variant="ghost" isDisabled={votingRule.filters.length === 1} onClick={() => setVotingRule((current) => ({...current, filters: current.filters.filter((_, itemIndex) => itemIndex !== index)}))}>Remove</Button>
                             </HStack>
                             <HStack gap={2} align="end">
                               <StackItem size="fill">
                                 <Selector
                                   label={`Filter ${index + 1} condition`}
+                                  isLabelHidden
                                   options={FILTER_CONDITIONS}
                                   value={filter.condition}
                                   onChange={(value) => setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, condition: value as PositionFilter['condition']} : item)}))}
@@ -1273,6 +1284,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                               <StackItem size="fill">
                                 <TextInput
                                   label={`Filter ${index + 1} value`}
+                                  isLabelHidden
                                   value={filter.value}
                                   onChange={(value) => {
                                     setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, value} : item)}));
@@ -1293,6 +1305,14 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                       </VStack>
                     ) : null}
                   </VStack>
+                  <CheckboxInput
+                    label="Anonymous voting"
+                    description="Applies to every position in this election. When enabled, ballots are not linked to voter records."
+                    value={anonymousVoting}
+                    onChange={setAnonymousVoting}
+                    isDisabled={election.status !== 'Draft' || election.ballotsSubmitted > 0}
+                    disabledMessage={election.ballotsSubmitted > 0 ? 'This setting cannot change after voting has begun.' : 'This setting can only be changed while the election is a draft.'}
+                  />
                   <CheckboxInput label="Offer an abstain option" description="Voters can choose not to vote for a candidate in this position." value={abstainEnabled} onChange={setAbstainEnabled} />
                 </FormLayout>
               </form>
@@ -1306,6 +1326,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                   type="submit"
                   form="position-form"
                   label={editingPositionId ? 'Save position changes' : 'Save position'}
+                  isLoading={isSavingPosition}
                   variant="primary"
                 >{editingPositionId ? 'Save changes' : 'Save position'}</Button>
               </HStack>

@@ -15,6 +15,7 @@ export type SubmissionReceipt = {
   submittedAt: string;
   electionTitle?: string;
   ballotSlug?: string;
+  anonymousVoting?: boolean;
 };
 
 const VOTER_KEY = 'ywap-voter-session';
@@ -41,11 +42,12 @@ export function saveBallotDraft(draft: BallotDraft) {
   window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
 }
 
-export function markSubmitted(submittedAt = new Date().toISOString(), electionTitle?: string, ballotSlug?: string) {
+export function markSubmitted(submittedAt = new Date().toISOString(), electionTitle?: string, ballotSlug?: string, anonymousVoting?: boolean) {
   const receipt: SubmissionReceipt = {
     submittedAt,
     ...(electionTitle ? {electionTitle} : {}),
     ...(ballotSlug ? {ballotSlug} : {}),
+    ...(typeof anonymousVoting === 'boolean' ? {anonymousVoting} : {}),
   };
   window.sessionStorage.setItem(SUBMITTED_KEY, JSON.stringify(receipt));
   window.sessionStorage.removeItem(DRAFT_KEY);
@@ -63,6 +65,7 @@ export function getSubmissionReceipt(): SubmissionReceipt | null {
         submittedAt: receipt.submittedAt,
         ...(typeof receipt.electionTitle === 'string' ? {electionTitle: receipt.electionTitle} : {}),
         ...(typeof receipt.ballotSlug === 'string' ? {ballotSlug: receipt.ballotSlug} : {}),
+        ...(typeof receipt.anonymousVoting === 'boolean' ? {anonymousVoting: receipt.anonymousVoting} : {}),
       };
     }
   } catch {

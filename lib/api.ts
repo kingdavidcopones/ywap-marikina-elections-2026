@@ -1,4 +1,4 @@
-import type {ElectionEvent, ElectionResult, ElectionSummary, EligibleVoter} from './election-data';
+import type {ElectionEvent, ElectionResult, ElectionSummary, EligibleVoter, IndividualVoteRecord} from './election-data';
 import {isNetworkError, reportNetworkError} from './network-error';
 
 export type ElectionAvailability = Pick<ElectionEvent, 'ballotSlug' | 'title' | 'status' | 'opensAt' | 'closesAt'>;
@@ -37,6 +37,10 @@ export async function fetchElectionAvailability(identifier: string) {
 
 export async function fetchResults(identifier: string) {
   return jsonRequest<{election: ElectionEvent; results: ElectionResult[]}>(`/api/elections/${encodeURIComponent(identifier)}/results`);
+}
+
+export async function fetchIndividualResults(eventId: string) {
+  return (await jsonRequest<{records: IndividualVoteRecord[]}>(`/api/admin/elections/${encodeURIComponent(eventId)}/individual-results`)).records;
 }
 
 export async function uploadCandidateImage(nomineeId: string, file: File) {
