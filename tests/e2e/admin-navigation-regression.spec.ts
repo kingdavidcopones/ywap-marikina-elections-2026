@@ -22,9 +22,11 @@ test('election detail stays visible when voter records fail to load', async ({pa
 });
 
 test('creating a draft closes the modal before opening its page', async ({page}) => {
+  let submittedAnonymousVoting: boolean | undefined;
   await page.route('**/api/elections', (route) => route.fulfill({json: {elections: []}}));
   await page.route('**/api/admin/elections', async (route) => {
     const body = route.request().postDataJSON() as {election: typeof election};
+    submittedAnonymousVoting = body.election.anonymousVoting;
     await route.fulfill({status: 201, json: {election: {...body.election, title: 'New draft'}}});
   });
   await page.route('**/api/elections/*', (route) => route.fulfill({json: {election: {...election, title: 'New draft'}}}));
@@ -33,10 +35,13 @@ test('creating a draft closes the modal before opening its page', async ({page})
   await page.goto('/admin');
   await page.getByRole('button', {name: 'Create election'}).first().click();
   await page.getByPlaceholder('e.g. Youth Elections').fill('New draft');
+  await expect(page.getByRole('checkbox', {name: 'Anonymous voting'})).toBeChecked();
+  await page.getByRole('checkbox', {name: 'Anonymous voting'}).uncheck();
   await page.getByRole('button', {name: 'Create election draft'}).click();
   await expect(page).toHaveURL(/\/admin\/elections\/[0-9a-f-]+$/);
   await expect(page.getByRole('alertdialog', {name: 'Create an election'})).toHaveCount(0);
   await expect(page.getByRole('heading', {name: 'New draft'})).toBeVisible();
+  expect(submittedAnonymousVoting).toBe(false);
 });
 
 test('create-election actions remain visible when the dialog content overflows', async ({page}) => {

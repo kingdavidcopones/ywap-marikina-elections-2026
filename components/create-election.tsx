@@ -4,6 +4,7 @@ import {FormEvent, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {Banner} from '@astryxdesign/core/Banner';
 import {Button} from '@astryxdesign/core/Button';
+import {CheckboxInput} from '@astryxdesign/core/CheckboxInput';
 import {Dialog, DialogHeader} from '@astryxdesign/core/Dialog';
 import {FileInput} from '@astryxdesign/core/FileInput';
 import {FormLayout} from '@astryxdesign/core/FormLayout';
@@ -85,6 +86,7 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
   const toast = useToast();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [anonymousVoting, setAnonymousVoting] = useState(true);
   const [voterFile, setVoterFile] = useState<File | null>(null);
   const [voterRows, setVoterRows] = useState<VoterPreviewRow[]>([]);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>();
@@ -98,6 +100,7 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
   function resetForm() {
     setTitle('');
     setDescription('');
+    setAnonymousVoting(true);
     setVoterFile(null);
     setVoterRows([]);
     setUploadStatus(undefined);
@@ -164,7 +167,7 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
     const newEvent: ElectionEvent = {
       id: crypto.randomUUID(),
       ballotSlug: `${title.toLocaleLowerCase('en').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 36) || 'election'}-${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`,
-      anonymousVoting: true,
+      anonymousVoting,
       title: title.trim(),
       description: description.trim() || 'Election details will be shared before voting opens.',
       status: 'Draft',
@@ -231,6 +234,12 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
                       placeholder="Tell voters what this election is for"
                       isOptional
                       width="100%"
+                    />
+                    <CheckboxInput
+                      label="Anonymous voting"
+                      description="When enabled, ballots are not linked to voter records. This applies to every position in the election."
+                      value={anonymousVoting}
+                      onChange={setAnonymousVoting}
                     />
                     <FileInput
                       label="Voter list"

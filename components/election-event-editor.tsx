@@ -147,7 +147,6 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
   const [aboutRole, setAboutRole] = useState('');
   const [responsibilities, setResponsibilities] = useState(['']);
   const [votingRule, setVotingRule] = useState<VotingRule>({type: 'all', filters: []});
-  const [anonymousVoting, setAnonymousVoting] = useState(true);
   const [abstainEnabled, setAbstainEnabled] = useState(true);
   const [isSavingPosition, setIsSavingPosition] = useState(false);
   const [selectedVoter, setSelectedVoter] = useState<VoterItem | null>(null);
@@ -167,6 +166,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
   const [eventTitle, setEventTitle] = useState('');
   const [eventDescription, setEventDescription] = useState('');
   const [eventBallotSlug, setEventBallotSlug] = useState('');
+  const [eventAnonymousVoting, setEventAnonymousVoting] = useState(true);
   const [eventEditError, setEventEditError] = useState<string | null>(null);
   const [editingCandidate, setEditingCandidate] = useState<CandidateTarget | null>(null);
   const [deletingCandidate, setDeletingCandidate] = useState<CandidateTarget | null>(null);
@@ -207,10 +207,22 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     eligible: eligibleIds.has(voter.memberId) ? 'Yes' : 'No',
   })), [eligibleIds, voters]);
   const searchSource = useMemo(() => voterSource(eventVoters), [eventVoters]);
-  const filterColumns = useMemo(() => Array.from(new Set(voters.flatMap((voter) => Object.keys(voter.attributes ?? {})))).sort(), [voters]);
+  const filterColumns = useMemo(() => Array.from(new Set(eventVoters.flatMap((voter) => Object.keys(voter.attributes ?? {})))).sort(), [eventVoters]);
+  const filterValues = useMemo(() => Object.fromEntries(filterColumns.map((column) => {
+    const unique = new Map<string, string>();
+    for (const voter of eventVoters) {
+      const value = voter.attributes?.[column]?.trim();
+      if (value && !unique.has(value.toLocaleLowerCase('en'))) unique.set(value.toLocaleLowerCase('en'), value);
+    }
+    return [column, Array.from(unique.values()).sort((left, right) => left.localeCompare(right))];
+  })) as Record<string, string[]>, [eventVoters, filterColumns]);
   const filtersComplete = votingRule.type === 'custom' && votingRule.filters.length > 0 && votingRule.filters.length <= 5 && votingRule.filters.every((filter) => (
     filterColumns.includes(filter.column) && FILTER_CONDITIONS.some((condition) => condition.value === filter.condition) &&
-    (['is_empty', 'is_not_empty'].includes(filter.condition) || Boolean(filter.value.trim()))
+    (['is_empty', 'is_not_empty'].includes(filter.condition) || (
+      ['equals', 'not_equals'].includes(filter.condition)
+        ? (filterValues[filter.column] ?? []).some((value) => value.toLocaleLowerCase('en') === filter.value.trim().toLocaleLowerCase('en'))
+        : Boolean(filter.value.trim())
+    ))
   ));
   const matchingVoterCount = useMemo(() => {
     if (!filtersComplete || !election) return 0;
@@ -233,6 +245,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     setEventTitle(election.title);
     setEventDescription(election.description);
     setEventBallotSlug(election.ballotSlug);
+    setEventAnonymousVoting(election.anonymousVoting);
     setEventEditError(null);
     setIsEditingEvent(true);
   }
@@ -254,6 +267,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       title: eventTitle.trim(),
       description: eventDescription.trim(),
       ballotSlug,
+      anonymousVoting: eventAnonymousVoting,
     };
     persist(updated);
     setIsEditingEvent(false);
@@ -440,7 +454,6 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     setAboutRole('');
     setResponsibilities(['']);
     setVotingRule({type: 'all', filters: []});
-    setAnonymousVoting(election?.anonymousVoting ?? true);
     setAbstainEnabled(true);
     setEditingPositionId(null);
     setPositionErrors({});
@@ -461,7 +474,6 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     setAboutRole(position.description);
     setResponsibilities(position.responsibilities.length ? position.responsibilities : ['']);
     setVotingRule(position.votingRule?.type === 'custom' ? position.votingRule : {type: 'all', filters: []});
-    setAnonymousVoting(election?.anonymousVoting ?? true);
     setAbstainEnabled(position.abstainEnabled);
     setEditingPositionId(position.id);
     setPositionErrors({});
@@ -511,7 +523,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       : [...election.positions, position];
     try {
       setIsSavingPosition(true);
-      const saved = await saveElection({...election, anonymousVoting, positions: updatedPositions});
+      const saved = await saveElection({...election, positions: updatedPositions});
       setElection({...saved, eligibleVoterIds: election.eligibleVoterIds});
       closePositionDialog();
       toast({
@@ -1227,7 +1239,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                   <VStack gap={3}>
                     <Selector
                       label="Who can vote for this position"
-                      options={[{value: 'all', label: 'All'}, {value: 'custom', label: 'Custom Filter'}]}
+                      options={[{value: 'all', label: 'All'}, {value: 'custom', label: 'Custom Filter', disabled: !filterColumns.length, description: !filterColumns.length ? 'Upload a voter CSV first' : undefined}]}
                       value={votingRule.type}
                       onChange={(value) => {
                         setVotingRule((current) => value === 'custom'
@@ -1250,6 +1262,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                                 options={[{value: 'and', label: 'AND'}, {value: 'or', label: 'OR'}]}
                                 value={filter.join ?? 'and'}
                                 onChange={(value) => setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, join: value as 'and' | 'or'} : item)}))}
+                                width="fit-content"
                               />
                             ) : null}
                             <HStack gap={2} align="end">
@@ -1261,7 +1274,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                                   placeholder={filterColumns.length ? 'Select a CSV column' : 'Upload a voter CSV first'}
                                   value={filter.column}
                                   onChange={(value) => {
-                                    setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, column: value} : item)}));
+                                    setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, column: value, value: ''} : item)}));
                                     setPositionErrors((current) => ({...current, votingRule: undefined}));
                                   }}
                                   isDisabled={!filterColumns.length}
@@ -1277,23 +1290,43 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                                   isLabelHidden
                                   options={FILTER_CONDITIONS}
                                   value={filter.condition}
-                                  onChange={(value) => setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, condition: value as PositionFilter['condition']} : item)}))}
+                                  onChange={(value) => {
+                                    setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, condition: value as PositionFilter['condition'], value: ['is_empty', 'is_not_empty'].includes(value) ? '' : item.value} : item)}));
+                                    setPositionErrors((current) => ({...current, votingRule: undefined}));
+                                  }}
                                   width="100%"
                                 />
                               </StackItem>
                               <StackItem size="fill">
-                                <TextInput
-                                  label={`Filter ${index + 1} value`}
-                                  isLabelHidden
-                                  value={filter.value}
-                                  onChange={(value) => {
-                                    setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, value} : item)}));
-                                    setPositionErrors((current) => ({...current, votingRule: undefined}));
-                                  }}
-                                  placeholder="Enter a value"
-                                  isDisabled={filter.condition === 'is_empty' || filter.condition === 'is_not_empty'}
-                                  width="100%"
-                                />
+                                {filter.condition === 'equals' || filter.condition === 'not_equals' ? (
+                                  <Selector
+                                    label={`Filter ${index + 1} value`}
+                                    isLabelHidden
+                                    options={(filterValues[filter.column] ?? []).map((value) => ({value, label: value}))}
+                                    value={(filterValues[filter.column] ?? []).find((value) => value.toLocaleLowerCase('en') === filter.value.trim().toLocaleLowerCase('en')) ?? ''}
+                                    onChange={(value) => {
+                                      setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, value} : item)}));
+                                      setPositionErrors((current) => ({...current, votingRule: undefined}));
+                                    }}
+                                    placeholder={filter.column ? 'Select a CSV value' : 'Choose a column first'}
+                                    isDisabled={!filter.column || !(filterValues[filter.column] ?? []).length}
+                                    hasSearch={(filterValues[filter.column] ?? []).length > 20}
+                                    width="100%"
+                                  />
+                                ) : (
+                                  <TextInput
+                                    label={`Filter ${index + 1} value`}
+                                    isLabelHidden
+                                    value={filter.value}
+                                    onChange={(value) => {
+                                      setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, value} : item)}));
+                                      setPositionErrors((current) => ({...current, votingRule: undefined}));
+                                    }}
+                                    placeholder="Enter a value"
+                                    isDisabled={filter.condition === 'is_empty' || filter.condition === 'is_not_empty'}
+                                    width="100%"
+                                  />
+                                )}
                               </StackItem>
                             </HStack>
                           </VStack>
@@ -1305,14 +1338,6 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                       </VStack>
                     ) : null}
                   </VStack>
-                  <CheckboxInput
-                    label="Anonymous voting"
-                    description="Applies to every position in this election. When enabled, ballots are not linked to voter records."
-                    value={anonymousVoting}
-                    onChange={setAnonymousVoting}
-                    isDisabled={election.status !== 'Draft' || election.ballotsSubmitted > 0}
-                    disabledMessage={election.ballotsSubmitted > 0 ? 'This setting cannot change after voting has begun.' : 'This setting can only be changed while the election is a draft.'}
-                  />
                   <CheckboxInput label="Offer an abstain option" description="Voters can choose not to vote for a candidate in this position." value={abstainEnabled} onChange={setAbstainEnabled} />
                 </FormLayout>
               </form>
@@ -1348,6 +1373,14 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                     <TextInput label="Election title" value={eventTitle} onChange={(value) => { setEventTitle(value); setEventEditError(null); }} isRequired width="100%" />
                     <TextArea label="Description" value={eventDescription} onChange={(value) => { setEventDescription(value); setEventEditError(null); }} isRequired width="100%" />
                     <TextInput label="Voting link ending" description="This appears after /vote/ in the link shared with voters." value={eventBallotSlug} onChange={(value) => { setEventBallotSlug(value); setEventEditError(null); }} isRequired width="100%" />
+                    <CheckboxInput
+                      label="Anonymous voting"
+                      description="When enabled, ballots are not linked to voter records. This applies to every position in the election."
+                      value={eventAnonymousVoting}
+                      onChange={setEventAnonymousVoting}
+                      isDisabled={election.status !== 'Draft' || election.ballotsSubmitted > 0}
+                      disabledMessage={election.ballotsSubmitted > 0 ? 'This setting cannot change after voting has begun.' : 'This setting can only be changed while the election is a draft.'}
+                    />
                   </FormLayout>
                 </VStack>
               </form>
