@@ -1,5 +1,5 @@
 import type {Metadata} from 'next';
-import {AdminLiveResult} from '@/components/admin-results';
+import {AdminLiveResult} from '@/components/admin-live-result';
 
 export const metadata: Metadata = {title: 'Election live results'};
 

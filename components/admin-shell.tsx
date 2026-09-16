@@ -267,7 +267,7 @@ export function AdminShell({children}: {children: React.ReactNode}) {
       >
         {children}
       </AppShell>
-      <CreateElectionDialog isOpen={isCreateDialogOpen} onOpenChange={setCreateDialogOpen} />
+      {isCreateDialogOpen ? <CreateElectionDialog isOpen onOpenChange={setCreateDialogOpen} /> : null}
 
       <AlertDialog
         isOpen={isLogoutOpen}

@@ -1,13 +1,24 @@
 'use client';
 
 import {useEffect, useState} from 'react';
+import dynamic from 'next/dynamic';
 import {fetchElectionAvailability, type ElectionAvailability} from '@/lib/api';
 import {getSubmissionReceipt, getVoterSession} from '@/lib/voter-session';
-import {BallotFlow} from './ballot-flow';
-import {BallotConfirmation} from './ballot-confirmation';
-import {VoterAccess} from './voter-access';
 import {VoterFlowSkeleton} from './loading-states';
 import {VoterLinkState} from './voter-link-state';
+
+const BallotFlow = dynamic(
+  () => import('./ballot-flow').then((module) => module.BallotFlow),
+  {loading: () => <VoterFlowSkeleton />},
+);
+const BallotConfirmation = dynamic(
+  () => import('./ballot-confirmation').then((module) => module.BallotConfirmation),
+  {loading: () => <VoterFlowSkeleton />},
+);
+const VoterAccess = dynamic(
+  () => import('./voter-access').then((module) => module.VoterAccess),
+  {loading: () => <VoterFlowSkeleton />},
+);
 
 export function EventBallot({ballotSlug}: {ballotSlug: string}) {
   const [verified, setVerified] = useState<boolean | null>(null);
