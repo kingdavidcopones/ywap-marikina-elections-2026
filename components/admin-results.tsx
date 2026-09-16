@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect, useState} from 'react';
+import {useRouter} from 'next/navigation';
 import {CaretRightIcon} from '@phosphor-icons/react/CaretRight';
 import {ChartBarIcon} from '@phosphor-icons/react/ChartBar';
 import {PlusIcon} from '@phosphor-icons/react/Plus';
@@ -35,6 +36,7 @@ function statusVariant(status: ElectionEvent['status']) {
 }
 
 export function AdminResults() {
+  const router = useRouter();
   const [events, setEvents] = useState<ElectionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -64,6 +66,7 @@ export function AdminResults() {
               <ListItem
                 key={event.id}
                 href={`/admin/results/${event.id}`}
+                onClick={() => router.push(`/admin/results/${event.id}`)}
                 label={event.title}
                 description={
                   <HStack className="results-election-description" gap={4} align="center">

@@ -136,6 +136,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
   const [election, setElection] = useState<ElectionEvent | null>(null);
   const [voters, setVoters] = useState<EligibleVoter[]>([]);
   const [isReady, setIsReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState('positions');
   const [isPositionDialogOpen, setIsPositionDialogOpen] = useState(false);
   const [editingPositionId, setEditingPositionId] = useState<string | null>(null);
@@ -174,12 +175,23 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
   const toast = useToast();
 
   useEffect(() => {
-    void Promise.all([fetchElection(eventId), fetchVoters(eventId)])
-      .then(([loadedElection, loadedVoters]) => {
-        setElection({...loadedElection, eligibleVoterIds: loadedVoters.filter((voter) => voter.eligible).map((voter) => voter.memberId)});
-        setVoters(loadedVoters);
+    setIsReady(false);
+    setLoadError(null);
+    void fetchElection(eventId)
+      .then(async (loadedElection) => {
+        setElection(loadedElection);
+        try {
+          const loadedVoters = await fetchVoters(eventId);
+          setElection({...loadedElection, eligibleVoterIds: loadedVoters.filter((voter) => voter.eligible).map((voter) => voter.memberId)});
+          setVoters(loadedVoters);
+        } catch (cause) {
+          setLoadError(cause instanceof Error ? cause.message : 'Voter records could not be loaded.');
+        }
       })
-      .catch(() => setElection(null))
+      .catch((cause) => {
+        setElection(null);
+        setLoadError(cause instanceof Error ? cause.message : 'The election could not be loaded.');
+      })
       .finally(() => setIsReady(true));
   }, [eventId]);
 
@@ -348,9 +360,14 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       setIsDeletingEvent(false);
       return;
     }
-    await removeElection(election.id);
-    setIsDeletingEvent(false);
-    router.push('/admin');
+    try {
+      await removeElection(election.id);
+      setIsDeletingEvent(false);
+      toast({body: `${election.title} was deleted.`, uniqueID: 'election-deleted'});
+      router.push('/admin');
+    } catch (cause) {
+      toast({body: cause instanceof Error ? cause.message : 'The election could not be deleted.', type: 'error', uniqueID: 'election-delete-error'});
+    }
   }
 
   function openCandidateEditor(positionId: string, nominee: Nominee) {
@@ -605,8 +622,8 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       <main className="admin-page">
         <Card padding={8}>
           <VStack gap={2}>
-            <Heading level={1}>We couldn’t find this election</Heading>
-            <Text color="secondary">It may have been deleted or the link may be incorrect.</Text>
+            <Heading level={1}>{loadError === 'Election not found.' ? 'We couldn’t find this election' : 'We couldn’t load this election'}</Heading>
+            <Text color="secondary">{loadError === 'Election not found.' ? 'It may have been deleted or the link may be incorrect.' : loadError ?? 'Please try again.'}</Text>
           </VStack>
         </Card>
       </main>
@@ -652,6 +669,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
 
   return (
     <main className="admin-page event-editor-page">
+      {loadError ? <Banner status="error" title="Voter records could not be loaded" description={loadError} container="section" /> : null}
       <Button label="Back to elections" href="/admin" variant="ghost" icon={<ArrowLeftIcon />}>Back to elections</Button>
 
       <header className="admin-page-header event-editor-header">

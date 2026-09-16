@@ -29,14 +29,21 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
   const [event, setEvent] = useState<ElectionEvent | null>(null);
   const [results, setResults] = useState<ElectionResult[]>([]);
   const [isReady, setIsReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshMessage, setRefreshMessage] = useState('');
 
   useEffect(() => {
+    setIsReady(false);
+    setLoadError(null);
     void fetchResults(eventId).then((payload) => {
       setEvent(payload.election);
       setResults(payload.results);
       setIsReady(true);
-    }).catch(() => setIsReady(true));
+    }).catch((cause) => {
+      setEvent(null);
+      setLoadError(cause instanceof Error ? cause.message : 'Results could not be loaded.');
+      setIsReady(true);
+    });
   }, [eventId]);
 
   async function refreshResults() {
@@ -56,8 +63,8 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
     return (
       <main className="admin-page">
         <EmptyState
-          title="Election not found"
-          description="This election may have been removed or is no longer available on this device."
+          title={loadError === 'Election results were not found.' ? 'Election not found' : 'Results could not be loaded'}
+          description={loadError === 'Election results were not found.' ? 'This election may have been removed.' : loadError ?? 'Please try again.'}
           headingLevel={1}
           actions={<Button label="Back to live results" href="/admin/results" variant="primary" />}
         />

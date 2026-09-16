@@ -124,16 +124,28 @@ export async function getElectionResults(identifier: string, publicOnly = false)
 
 export async function getElectionVoters(electionId: string): Promise<EligibleVoter[]> {
   const supabase = createServerSupabaseClient();
-  const {data, error} = await supabase.from('eligible_voters').select('member_id, first_name, last_name, gender, age, birth_date, age_group, attributes, eligible, participation(submitted_at)').eq('election_id', electionId).order('last_name');
-  return assertData(data, error).map((row: any) => ({
+  const current = await supabase.from('eligible_voters').select('member_id, first_name, last_name, gender, age, birth_date, age_group, attributes, eligible, participation(submitted_at)').eq('election_id', electionId).order('last_name');
+  let rows: any[];
+  if (current.error?.code === '42703' && current.error.message.includes('eligible_voters.attributes')) {
+    const legacy = await supabase.from('eligible_voters').select('member_id, first_name, last_name, gender, age, birth_date, age_group, eligible, participation(submitted_at)').eq('election_id', electionId).order('last_name');
+    rows = assertData(legacy.data, legacy.error);
+  } else {
+    rows = assertData(current.data, current.error);
+  }
+  return rows.map((row: any) => ({
     memberId: row.member_id, name: `${row.first_name} ${row.last_name}`, ageGroup: groupFromDb[row.age_group], gender: row.gender, age: row.age, birthDate: row.birth_date,
-    attributes: row.attributes ?? {},
+    attributes: row.attributes ?? {member_id: row.member_id, first_name: row.first_name, last_name: row.last_name, gender: row.gender ?? '', age: String(row.age ?? ''), birth_date: row.birth_date ?? '', age_group: groupFromDb[row.age_group]},
     eligible: row.eligible, hasVoted: Boolean(row.participation?.some((item: any) => item.submitted_at)),
   }));
 }
 
 export async function syncElection(election: ElectionEvent, voters?: EligibleVoter[]) {
   const supabase = createServerSupabaseClient();
+  if (election.positions.some((position) => position.votingRule?.type === 'custom')) {
+    const {error: schemaError} = await supabase.from('positions').select('voting_rule').limit(0);
+    if (schemaError?.code === '42703') throw new Error('Custom voting filters need the latest database migration before they can be saved.');
+    if (schemaError) throw new Error(schemaError.message);
+  }
   const normalizedElection = {
     ...election,
     positions: election.positions.map((position) => ({
