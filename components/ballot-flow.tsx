@@ -20,12 +20,11 @@ import {SelectableCard} from '@astryxdesign/core/SelectableCard';
 import {Text} from '@astryxdesign/core/Text';
 import {
   deterministicShuffle,
-  positionsForEventGroup,
   type ElectionEvent,
   type Position,
 } from '@/lib/election-data';
-import {fetchElection} from '@/lib/api';
-import {getBallotDraft, getVoterSession, saveBallotDraft, type VoterSession} from '@/lib/voter-session';
+import {fetchElection, fetchEligiblePositionIds} from '@/lib/api';
+import {getBallotDraft, getVoterSession, saveBallotDraft, saveVoterSession, type VoterSession} from '@/lib/voter-session';
 import {AccessGate} from './access-gate';
 import {VoterFlowSkeleton} from './loading-states';
 
@@ -50,14 +49,23 @@ export function BallotFlow({ballotSlug}: {ballotSlug?: string}) {
       setReady(true);
       return;
     }
-    void fetchElection(activeSlug)
-      .then(setElection)
+    void Promise.all([fetchElection(activeSlug), fetchEligiblePositionIds()])
+      .then(([loadedElection, eligiblePositionIds]) => {
+        setElection(loadedElection);
+        if (session) {
+          const updatedSession = {...session, eligiblePositionIds};
+          setVoter(updatedSession);
+          saveVoterSession(updatedSession);
+        }
+        const eligibleCount = loadedElection.positions.filter((position) => eligiblePositionIds.includes(position.id)).length;
+        setActiveIndex(Math.min(draft.positionIndex, Math.max(eligibleCount - 1, 0)));
+      })
       .catch(() => setElection(null))
       .finally(() => setReady(true));
   }, [ballotSlug]);
 
   const ballotPositions = useMemo(
-    () => voter && election ? positionsForEventGroup(election, voter.ageGroup) : [],
+    () => voter && election ? election.positions.filter((position) => voter.eligiblePositionIds?.includes(position.id)) : [],
     [election, voter],
   );
   const current = ballotPositions[activeIndex];

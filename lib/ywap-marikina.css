@@ -325,6 +325,10 @@
     --astryx-theme-neutral-color-on-tint-overlay-pressed: light-dark(#fafafa33, #0a0a0a33);
     --astryx-theme-neutral-color-destructive-overlay-hover: light-dark(#ff7f770D, #ee736c0D);
     --astryx-theme-neutral-color-destructive-overlay-pressed: light-dark(#ff7f771A, #ee736c1A);
+    --color-mesh-blue: #D6F4FF;
+    --color-mesh-peach: #FFD8B6;
+    --color-mesh-yellow: #FFF9C8;
+    --color-mesh-lavender: #B7C5FF;
   }
 
   .astryx-heading[data-level="1"] {

@@ -54,9 +54,11 @@ export async function POST(request: NextRequest) {
 
     await supabase.from('verification_attempts').delete().eq('client_key_hash', key);
     const ageGroup = voter.age_group === 'young_people' ? 'Young People' : voter.age_group === 'young_adults' ? 'Young Adults' : 'Teens';
+    const {data: eligiblePositionIds, error: positionsError} = await supabase.rpc('eligible_position_ids', {p_election_id: election.id, p_voter_id: voter.id});
+    if (positionsError) throw new Error(positionsError.message);
     await supabase.from('participation').upsert({election_id: election.id, eligible_voter_id: voter.id, verified_at: now.toISOString()}, {onConflict: 'election_id,eligible_voter_id'});
     await setVoterSession({voterId: voter.id, electionId: election.id, memberId: voter.member_id, firstName: voter.first_name.split(/\s+/)[0], ageGroup, ballotSlug: election.ballotSlug});
-    return NextResponse.json({ok: true, voter: {memberId: voter.member_id, firstName: voter.first_name.split(/\s+/)[0], ageGroup, ballotSlug: election.ballotSlug}});
+    return NextResponse.json({ok: true, voter: {memberId: voter.member_id, firstName: voter.first_name.split(/\s+/)[0], ageGroup, ballotSlug: election.ballotSlug, eligiblePositionIds}});
   } catch (error) {
     return NextResponse.json({ok: false, message: error instanceof Error ? error.message : 'Voter verification is unavailable.'}, {status: 503});
   }

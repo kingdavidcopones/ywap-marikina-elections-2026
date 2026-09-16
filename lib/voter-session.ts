@@ -2,6 +2,7 @@ export type VoterSession = {
   memberId: string;
   firstName: string;
   ageGroup: string;
+  eligiblePositionIds: string[];
   ballotSlug?: string;
 };
 

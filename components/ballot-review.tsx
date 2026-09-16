@@ -15,9 +15,9 @@ import {HStack, VStack} from '@astryxdesign/core/Layout';
 import {Icon} from '@astryxdesign/core/Icon';
 import {Text} from '@astryxdesign/core/Text';
 import {Banner} from '@astryxdesign/core/Banner';
-import {positionsForEventGroup, type ElectionEvent} from '@/lib/election-data';
-import {fetchElection} from '@/lib/api';
-import {getBallotDraft, getVoterSession, markSubmitted, saveBallotDraft, type VoterSession} from '@/lib/voter-session';
+import {type ElectionEvent} from '@/lib/election-data';
+import {fetchElection, fetchEligiblePositionIds} from '@/lib/api';
+import {getBallotDraft, getVoterSession, markSubmitted, saveBallotDraft, saveVoterSession, type VoterSession} from '@/lib/voter-session';
 import {isNetworkError, reportNetworkError} from '@/lib/network-error';
 import {AccessGate} from './access-gate';
 import {VoterFlowSkeleton} from './loading-states';
@@ -40,10 +40,18 @@ export function BallotReview() {
       setReady(true);
       return;
     }
-    void fetchElection(session.ballotSlug).then(setElection).catch(() => setElection(null)).finally(() => setReady(true));
+    void Promise.all([fetchElection(session.ballotSlug), fetchEligiblePositionIds()])
+      .then(([loadedElection, eligiblePositionIds]) => {
+        setElection(loadedElection);
+        const updatedSession = {...session, eligiblePositionIds};
+        setVoter(updatedSession);
+        saveVoterSession(updatedSession);
+      })
+      .catch(() => setElection(null))
+      .finally(() => setReady(true));
   }, []);
 
-  const ballotPositions = useMemo(() => voter && election ? positionsForEventGroup(election, voter.ageGroup) : [], [election, voter]);
+  const ballotPositions = useMemo(() => voter && election ? election.positions.filter((position) => voter.eligiblePositionIds?.includes(position.id)) : [], [election, voter]);
   const complete = ballotPositions.every((position) => selections[position.id]);
 
   function edit(index: number) {
@@ -60,7 +68,8 @@ export function BallotReview() {
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      const response = await fetch('/api/ballots', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({selections})});
+      const allowedSelections = Object.fromEntries(ballotPositions.map((position) => [position.id, selections[position.id]]));
+      const response = await fetch('/api/ballots', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({selections: allowedSelections})});
       const body = await response.json().catch(() => ({})) as {submittedAt?: string; message?: string};
       if (!response.ok || !body.submittedAt) {
         setSubmitError(body.message ?? 'The ballot could not be submitted. Please try again.');

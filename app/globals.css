@@ -26,11 +26,10 @@ body {
 .animated-mesh-gradient-background {
   background-image: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--color-border-cyan) 22%, var(--color-background-body)),
-    color-mix(in srgb, var(--color-border-blue) 20%, var(--color-background-body)),
-    color-mix(in srgb, var(--color-border-yellow) 22%, var(--color-background-body)),
-    color-mix(in srgb, var(--color-border-orange) 18%, var(--color-background-body)),
-    color-mix(in srgb, var(--color-border-purple) 18%, var(--color-background-body))
+    var(--color-mesh-blue),
+    var(--color-mesh-peach),
+    var(--color-mesh-yellow),
+    var(--color-mesh-lavender)
   );
   animation: animatedgradient calc(var(--duration-slow-max) * 8) var(--ease-standard) infinite;
   background-size: 200% 200%;

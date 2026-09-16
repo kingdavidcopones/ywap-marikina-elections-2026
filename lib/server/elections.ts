@@ -31,6 +31,7 @@ async function mapElection(row: any): Promise<ElectionEvent> {
     description: position.description,
     responsibilities: Array.isArray(position.responsibilities) ? position.responsibilities : [],
     abstainEnabled: position.abstain_enabled,
+    votingRule: position.voting_rule ?? {type: 'all', filters: []},
     nominees: (position.nominees ?? []).filter((item: any) => item.active).sort((a: any, b: any) => a.display_order - b.display_order).map((nominee: any) => ({
       id: nominee.id,
       name: nominee.full_name,
@@ -113,7 +114,7 @@ export async function getElectionResults(identifier: string, publicOnly = false)
   const results: ElectionResult[] = election.positions.map((position) => {
     const rows = selections.filter((selection: any) => selection.position_id === position.id);
     return {
-      position: position.name, group: position.group, total: election.ballotsSubmitted,
+      position: position.name, group: position.group, total: rows.length,
       abstentions: rows.filter((selection: any) => selection.is_abstain).length,
       nominees: position.nominees.map((nominee) => ({...nominee, votes: rows.filter((selection: any) => selection.nominee_id === nominee.id).length})),
     };
@@ -123,9 +124,10 @@ export async function getElectionResults(identifier: string, publicOnly = false)
 
 export async function getElectionVoters(electionId: string): Promise<EligibleVoter[]> {
   const supabase = createServerSupabaseClient();
-  const {data, error} = await supabase.from('eligible_voters').select('member_id, first_name, last_name, gender, age, birth_date, age_group, eligible, participation(submitted_at)').eq('election_id', electionId).order('last_name');
+  const {data, error} = await supabase.from('eligible_voters').select('member_id, first_name, last_name, gender, age, birth_date, age_group, attributes, eligible, participation(submitted_at)').eq('election_id', electionId).order('last_name');
   return assertData(data, error).map((row: any) => ({
     memberId: row.member_id, name: `${row.first_name} ${row.last_name}`, ageGroup: groupFromDb[row.age_group], gender: row.gender, age: row.age, birthDate: row.birth_date,
+    attributes: row.attributes ?? {},
     eligible: row.eligible, hasVoted: Boolean(row.participation?.some((item: any) => item.submitted_at)),
   }));
 }

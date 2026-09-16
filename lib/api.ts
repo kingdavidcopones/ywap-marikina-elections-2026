@@ -27,6 +27,10 @@ export async function fetchElection(identifier: string) {
   return (await jsonRequest<{election: ElectionEvent}>(`/api/elections/${encodeURIComponent(identifier)}`)).election;
 }
 
+export async function fetchEligiblePositionIds() {
+  return (await jsonRequest<{eligiblePositionIds: string[]}>('/api/ballots')).eligiblePositionIds;
+}
+
 export async function fetchElectionAvailability(identifier: string) {
   return (await jsonRequest<{election: ElectionAvailability}>(`/api/elections/${encodeURIComponent(identifier)}/availability`)).election;
 }

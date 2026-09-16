@@ -30,6 +30,7 @@ import {Heading} from '@astryxdesign/core/Heading';
 import {HStack, Layout, LayoutContent, LayoutFooter, StackItem, VStack} from '@astryxdesign/core/Layout';
 import {Icon} from '@astryxdesign/core/Icon';
 import {Pagination} from '@astryxdesign/core/Pagination';
+import {Selector} from '@astryxdesign/core/Selector';
 import {Tab, TabList} from '@astryxdesign/core/TabList';
 import {Table, pixel, proportional} from '@astryxdesign/core/Table';
 import {Text} from '@astryxdesign/core/Text';
@@ -42,11 +43,14 @@ import {ElectionEditorSkeleton} from '@/components/loading-states';
 import {fetchElection, fetchVoters, removeElection, saveElection, uploadCandidateImage} from '@/lib/api';
 import {
   eligibleVotersForEvent,
+  positionMatchesVoter,
   type ElectionEvent,
   type ElectionStatus,
   type EligibleVoter,
   type Nominee,
   type Position,
+  type PositionFilter,
+  type VotingRule,
 } from '@/lib/election-data';
 
 interface VoterItem extends SearchableItem<{voter: EligibleVoter}> {
@@ -63,11 +67,20 @@ interface VoterRow extends Record<string, unknown> {
 type UploadStatus = {type: 'error' | 'success'; message: string};
 type CandidateTarget = {positionId: string; nomineeId: string; name: string};
 type PositionTarget = {positionId: string; name: string; candidateCount: number};
-type PositionErrors = {name?: string; description?: string; responsibilities?: string};
+type PositionErrors = {name?: string; description?: string; responsibilities?: string; votingRule?: string};
 type StatusAction = 'publish' | 'unpublish' | 'archive' | 'restore';
 type PublicationIntent = 'publish' | 'schedule';
 type VoterUploadMode = 'add' | 'replace';
 const VOTERS_PAGE_SIZE = 10;
+const EMPTY_FILTER: PositionFilter = {column: '', condition: 'equals', value: ''};
+const FILTER_CONDITIONS = [
+  {value: 'equals', label: 'Equals'},
+  {value: 'not_equals', label: 'Does not equal'},
+  {value: 'contains', label: 'Contains'},
+  {value: 'not_contains', label: 'Does not contain'},
+  {value: 'is_empty', label: 'Is empty'},
+  {value: 'is_not_empty', label: 'Is not empty'},
+];
 
 function toVoterItem(voter: EligibleVoter): VoterItem {
   return {id: voter.memberId, label: voter.name, auxiliaryData: {voter}};
@@ -132,6 +145,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
   const [positionName, setPositionName] = useState('');
   const [aboutRole, setAboutRole] = useState('');
   const [responsibilities, setResponsibilities] = useState(['']);
+  const [votingRule, setVotingRule] = useState<VotingRule>({type: 'all', filters: []});
   const [abstainEnabled, setAbstainEnabled] = useState(true);
   const [selectedVoter, setSelectedVoter] = useState<VoterItem | null>(null);
   const [candidateImage, setCandidateImage] = useState<File | null>(null);
@@ -179,6 +193,16 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     eligible: eligibleIds.has(voter.memberId) ? 'Yes' : 'No',
   })), [eligibleIds, voters]);
   const searchSource = useMemo(() => voterSource(eventVoters), [eventVoters]);
+  const filterColumns = useMemo(() => Array.from(new Set(voters.flatMap((voter) => Object.keys(voter.attributes ?? {})))).sort(), [voters]);
+  const filtersComplete = votingRule.type === 'custom' && votingRule.filters.length > 0 && votingRule.filters.length <= 5 && votingRule.filters.every((filter) => (
+    filterColumns.includes(filter.column) && FILTER_CONDITIONS.some((condition) => condition.value === filter.condition) &&
+    (['is_empty', 'is_not_empty'].includes(filter.condition) || Boolean(filter.value.trim()))
+  ));
+  const matchingVoterCount = useMemo(() => {
+    if (!filtersComplete || !election) return 0;
+    const group = election.positions.find((position) => position.id === editingPositionId)?.group ?? 'General';
+    return eventVoters.filter((voter) => positionMatchesVoter({group, votingRule}, voter)).length;
+  }, [election, editingPositionId, eventVoters, filtersComplete, votingRule]);
   const votersPageStart = (votersPage - 1) * VOTERS_PAGE_SIZE;
   const visibleVoterRows = voterRows.slice(votersPageStart, votersPageStart + VOTERS_PAGE_SIZE);
 
@@ -396,6 +420,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     setPositionName('');
     setAboutRole('');
     setResponsibilities(['']);
+    setVotingRule({type: 'all', filters: []});
     setAbstainEnabled(true);
     setEditingPositionId(null);
     setPositionErrors({});
@@ -415,6 +440,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     setPositionName(position.name);
     setAboutRole(position.description);
     setResponsibilities(position.responsibilities.length ? position.responsibilities : ['']);
+    setVotingRule(position.votingRule?.type === 'custom' ? position.votingRule : {type: 'all', filters: []});
     setAbstainEnabled(position.abstainEnabled);
     setEditingPositionId(position.id);
     setPositionErrors({});
@@ -437,6 +463,10 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     else if (isDuplicateName) errors.name = 'A position with this name is already on the ballot.';
     if (!description) errors.description = 'Explain what this position does and how the person will serve.';
     if (!responsibilityItems.length) errors.responsibilities = 'Add at least one responsibility.';
+    if (votingRule.type === 'custom') {
+      if (!filterColumns.length) errors.votingRule = 'Upload a voter CSV before adding a custom filter.';
+      else if (!filtersComplete) errors.votingRule = 'Choose a CSV column, condition, and value for every filter.';
+    }
 
     if (Object.keys(errors).length) {
       setPositionErrors(errors);
@@ -451,6 +481,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       description,
       responsibilities: responsibilityItems,
       abstainEnabled,
+      votingRule: votingRule.type === 'custom' ? {type: 'custom', filters: votingRule.filters.map((filter, index) => ({...filter, value: filter.value.trim(), ...(index === 0 ? {join: undefined} : {})}))} : {type: 'all', filters: []},
       nominees: existingPosition?.nominees ?? [],
     };
 
@@ -538,6 +569,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       age: Number(record.age),
       birthDate: new Date(record.birth_date).toISOString().slice(0, 10),
       ageGroup: record.age_group?.trim(),
+      attributes: record,
     }));
     if (!importedVoters.length) {
       setVoterUploadStatus({type: 'error', message: 'We couldn’t find a member_id column with voter records. Check the CSV and try again.'});
@@ -1166,6 +1198,82 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                       </HStack>
                     ))}
                     <Button label="Add another responsibility" variant="secondary" onClick={() => setResponsibilities((current) => [...current, ''])}>Add responsibility</Button>
+                  </VStack>
+                  <VStack gap={3}>
+                    <Selector
+                      label="Who can vote for this position"
+                      options={[{value: 'all', label: 'All'}, {value: 'custom', label: 'Custom Filter'}]}
+                      value={votingRule.type}
+                      onChange={(value) => {
+                        setVotingRule((current) => value === 'custom'
+                          ? {type: 'custom', filters: current.filters.length ? current.filters : [{...EMPTY_FILTER}]}
+                          : {type: 'all', filters: []});
+                        setPositionErrors((current) => ({...current, votingRule: undefined}));
+                      }}
+                      width="100%"
+                    />
+                    {votingRule.type === 'custom' ? (
+                      <VStack gap={4}>
+                        <Text type="supporting" color="secondary">Only voters whose CSV data matches these filters can vote for this position. Filters are evaluated from top to bottom.</Text>
+                        {votingRule.filters.map((filter, index) => (
+                          <VStack key={index} gap={2}>
+                            {index > 0 ? (
+                              <Selector
+                                label={`Combine filter ${index + 1} with previous filters`}
+                                options={[{value: 'and', label: 'AND'}, {value: 'or', label: 'OR'}]}
+                                value={filter.join ?? 'and'}
+                                onChange={(value) => setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, join: value as 'and' | 'or'} : item)}))}
+                              />
+                            ) : null}
+                            <HStack gap={2} align="end">
+                              <StackItem size="fill">
+                                <Selector
+                                  label={`Filter ${index + 1} CSV column`}
+                                  options={filterColumns.map((column) => ({value: column, label: column.replaceAll('_', ' ')}))}
+                                  placeholder={filterColumns.length ? 'Select a CSV column' : 'Upload a voter CSV first'}
+                                  value={filter.column}
+                                  onChange={(value) => {
+                                    setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, column: value} : item)}));
+                                    setPositionErrors((current) => ({...current, votingRule: undefined}));
+                                  }}
+                                  isDisabled={!filterColumns.length}
+                                  width="100%"
+                                />
+                              </StackItem>
+                              <Button label={`Remove filter ${index + 1}`} variant="ghost" isDisabled={votingRule.filters.length === 1} icon={<TrashIcon />} onClick={() => setVotingRule((current) => ({...current, filters: current.filters.filter((_, itemIndex) => itemIndex !== index)}))} />
+                            </HStack>
+                            <HStack gap={2} align="end">
+                              <StackItem size="fill">
+                                <Selector
+                                  label={`Filter ${index + 1} condition`}
+                                  options={FILTER_CONDITIONS}
+                                  value={filter.condition}
+                                  onChange={(value) => setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, condition: value as PositionFilter['condition']} : item)}))}
+                                  width="100%"
+                                />
+                              </StackItem>
+                              <StackItem size="fill">
+                                <TextInput
+                                  label={`Filter ${index + 1} value`}
+                                  value={filter.value}
+                                  onChange={(value) => {
+                                    setVotingRule((current) => ({...current, filters: current.filters.map((item, itemIndex) => itemIndex === index ? {...item, value} : item)}));
+                                    setPositionErrors((current) => ({...current, votingRule: undefined}));
+                                  }}
+                                  placeholder="Enter a value"
+                                  isDisabled={filter.condition === 'is_empty' || filter.condition === 'is_not_empty'}
+                                  width="100%"
+                                />
+                              </StackItem>
+                            </HStack>
+                          </VStack>
+                        ))}
+                        {positionErrors.votingRule ? <Banner status="error" title="Check voting filters" description={positionErrors.votingRule} container="section" /> : null}
+                        {filtersComplete ? <Text type="supporting" color="secondary" hasTabularNumbers>{matchingVoterCount} of {eventVoters.length} eligible voters match</Text> : null}
+                        <Button label="Add filter" variant="secondary" icon={<PlusIcon />} isDisabled={votingRule.filters.length >= 5} onClick={() => setVotingRule((current) => ({...current, filters: [...current.filters, {...EMPTY_FILTER, join: 'and'}]}))}>Add filter</Button>
+                        <Text type="supporting" color="secondary">{votingRule.filters.length} of 5 filters</Text>
+                      </VStack>
+                    ) : null}
                   </VStack>
                   <CheckboxInput label="Offer an abstain option" description="Voters can choose not to vote for a candidate in this position." value={abstainEnabled} onChange={setAbstainEnabled} />
                 </FormLayout>

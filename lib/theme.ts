@@ -21,4 +21,10 @@ export const ywapTheme = defineTheme({
     '--font-family-body': '"Figtree Variable", Figtree, Arial, sans-serif',
     '--font-family-heading': '"Figtree Variable", Figtree, Arial, sans-serif',
   },
+  localTokens: {
+    '--color-mesh-blue': '#D6F4FF',
+    '--color-mesh-peach': '#FFD8B6',
+    '--color-mesh-yellow': '#FFF9C8',
+    '--color-mesh-lavender': '#B7C5FF',
+  },
 });

@@ -20,7 +20,17 @@ export type EligibleVoter = {
   birthDate?: string;
   hasVoted?: boolean;
   eligible?: boolean;
+  attributes?: Record<string, string>;
 };
+
+export type PositionFilter = {
+  column: string;
+  condition: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'is_empty' | 'is_not_empty';
+  value: string;
+  join?: 'and' | 'or';
+};
+
+export type VotingRule = {type: 'all' | 'custom'; filters: PositionFilter[]};
 
 export type Position = {
   id: string;
@@ -29,6 +39,7 @@ export type Position = {
   description: string;
   responsibilities: string[];
   abstainEnabled: boolean;
+  votingRule?: VotingRule;
   nominees: Nominee[];
 };
 
@@ -61,6 +72,27 @@ export type ElectionResult = {
 
 export function positionsForEventGroup(event: ElectionEvent, group: string) {
   return event.positions.filter((position) => position.group === 'General' || position.group === group);
+}
+
+export function positionMatchesVoter(position: Pick<Position, 'group' | 'votingRule'>, voter: EligibleVoter) {
+  if (position.group !== 'General' && position.group !== voter.ageGroup) return false;
+  const rule = position.votingRule;
+  if (!rule || rule.type === 'all') return true;
+  if (!rule.filters.length || rule.filters.length > 5) return false;
+  let matches = false;
+  for (const [index, filter] of rule.filters.entries()) {
+    const actual = (voter.attributes?.[filter.column] ?? '').trim().toLocaleLowerCase('en');
+    const expected = filter.value.trim().toLocaleLowerCase('en');
+    const result = filter.condition === 'equals' ? actual === expected
+      : filter.condition === 'not_equals' ? actual !== expected
+      : filter.condition === 'contains' ? actual.includes(expected)
+      : filter.condition === 'not_contains' ? !actual.includes(expected)
+      : filter.condition === 'is_empty' ? actual === ''
+      : filter.condition === 'is_not_empty' ? actual !== ''
+      : false;
+    matches = index === 0 ? result : filter.join === 'or' ? matches || result : matches && result;
+  }
+  return matches;
 }
 
 export function eligibleVotersForEvent(event: ElectionEvent, voters: EligibleVoter[]) {

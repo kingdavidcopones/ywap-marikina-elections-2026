@@ -2,6 +2,16 @@ import {NextResponse} from 'next/server';
 import {getVoterToken} from '@/lib/server/auth';
 import {createServerSupabaseClient} from '@/lib/supabase';
 
+export async function GET() {
+  const voter = await getVoterToken();
+  if (!voter) return NextResponse.json({message: 'Verify your voter record before voting.'}, {status: 401});
+  const {data, error} = await createServerSupabaseClient().rpc('eligible_position_ids', {
+    p_election_id: voter.electionId, p_voter_id: voter.voterId,
+  });
+  if (error) return NextResponse.json({message: error.message}, {status: 503});
+  return NextResponse.json({eligiblePositionIds: data});
+}
+
 export async function POST(request: Request) {
   try {
     const voter = await getVoterToken();

@@ -38,6 +38,7 @@ interface VoterPreviewRow extends Record<string, unknown> {
   ageGroup: string;
   importStatus: string;
   isValid: boolean;
+  attributes: Record<string, string>;
 }
 
 type UploadStatus = {type: 'error' | 'warning' | 'success'; message: string};
@@ -71,6 +72,7 @@ function validateVoterRows(csv: string) {
       age,
       birthDate: record.birth_date.trim(),
       ageGroup: record.age_group.trim(),
+      attributes: record,
       importStatus: errors.length ? errors.join('; ') : 'Valid',
       isValid: errors.length === 0,
     };
@@ -182,6 +184,7 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
       gender: row.gender,
       age: Number(row.age),
       birthDate: new Date(row.birthDate).toISOString().slice(0, 10),
+      attributes: row.attributes,
     }));
     try {
       const saved = await createElection(newEvent, voters);
