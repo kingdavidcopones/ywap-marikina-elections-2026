@@ -2,6 +2,8 @@ import 'server-only';
 import {createServerSupabaseClient} from '@/lib/supabase';
 import type {ElectionEvent, ElectionResult, EligibleVoter, Position} from '@/lib/election-data';
 
+export type ElectionAvailability = Pick<ElectionEvent, 'ballotSlug' | 'title' | 'status' | 'opensAt' | 'closesAt'>;
+
 const statusFromDb: Record<string, ElectionEvent['status']> = {
   draft: 'Draft', scheduled: 'Scheduled', open: 'Open', closed: 'Closed', published: 'Published', archived: 'Archived',
 };
@@ -15,19 +17,9 @@ function assertData<T>(data: T | null, error: {message: string} | null): T {
   return data;
 }
 
-async function counts(electionId: string) {
-  const supabase = createServerSupabaseClient();
-  const [eligible, ballots] = await Promise.all([
-    supabase.from('eligible_voters').select('*', {count: 'exact', head: true}).eq('election_id', electionId).eq('eligible', true),
-    supabase.from('anonymous_ballots').select('*', {count: 'exact', head: true}).eq('election_id', electionId),
-  ]);
-  if (eligible.error) throw new Error(eligible.error.message);
-  if (ballots.error) throw new Error(ballots.error.message);
-  return {eligibleVoters: eligible.count ?? 0, ballotsSubmitted: ballots.count ?? 0};
-}
-
-async function mapElection(row: any): Promise<ElectionEvent> {
-  const totals = await counts(row.id);
+function mapElection(row: any): ElectionEvent {
+  const eligibleVoters = Number(row.eligible_voters?.[0]?.count ?? 0);
+  const ballotsSubmitted = Number(row.anonymous_ballots?.[0]?.count ?? 0);
   const positions = (row.positions ?? []).sort((a: any, b: any) => a.display_order - b.display_order).map((position: any) => ({
     id: position.id,
     name: position.name,
@@ -42,29 +34,49 @@ async function mapElection(row: any): Promise<ElectionEvent> {
   return {
     id: row.id, ballotSlug: row.ballot_slug, title: row.title, description: row.description,
     status: statusFromDb[row.status] ?? 'Draft', electionDate: row.election_date ?? '', opensAt: row.opens_at ?? '', closesAt: row.closes_at ?? '',
-    ...totals, positions,
+    eligibleVoters, ballotsSubmitted, positions,
   };
 }
 
-const electionSelect = '*, positions(*, nominees(*))';
+const electionSelect = '*, positions(*, nominees(*)), eligible_voters(count), anonymous_ballots(count)';
 
 export async function listElections(options?: {publicOnly?: boolean}) {
   const supabase = createServerSupabaseClient();
-  let query = supabase.from('elections').select(electionSelect).order('created_at', {ascending: false});
+  let query = supabase.from('elections').select(electionSelect).eq('eligible_voters.eligible', true).order('created_at', {ascending: false});
   if (options?.publicOnly) query = query.in('status', ['open', 'closed', 'published']);
   const {data, error} = await query;
   const rows = assertData(data, error);
-  return Promise.all((rows as any[]).map(mapElection));
+  return (rows as any[]).map(mapElection);
 }
 
 export async function getElection(identifier: string, options?: {publicOnly?: boolean}) {
   const supabase = createServerSupabaseClient();
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier);
-  let query = supabase.from('elections').select(electionSelect).eq(isUuid ? 'id' : 'ballot_slug', identifier);
+  let query = supabase.from('elections').select(electionSelect).eq('eligible_voters.eligible', true).eq(isUuid ? 'id' : 'ballot_slug', identifier);
   if (options?.publicOnly) query = query.in('status', ['open', 'closed', 'published']);
   const {data, error} = await query.maybeSingle();
   if (error) throw new Error(error.message);
   return data ? mapElection(data) : null;
+}
+
+export async function getElectionAvailability(identifier: string): Promise<ElectionAvailability | null> {
+  const supabase = createServerSupabaseClient();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(identifier);
+  const {data, error} = await supabase
+    .from('elections')
+    .select('ballot_slug, title, status, opens_at, closes_at')
+    .eq(isUuid ? 'id' : 'ballot_slug', identifier)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+
+  return {
+    ballotSlug: data.ballot_slug,
+    title: data.title,
+    status: statusFromDb[data.status] ?? 'Draft',
+    opensAt: data.opens_at ?? '',
+    closesAt: data.closes_at ?? '',
+  };
 }
 
 export async function getElectionResults(identifier: string, publicOnly = false) {

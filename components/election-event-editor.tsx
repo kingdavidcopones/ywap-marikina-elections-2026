@@ -7,6 +7,10 @@ import {ArchiveIcon} from '@phosphor-icons/react/Archive';
 import {CopySimpleIcon} from '@phosphor-icons/react/CopySimple';
 import {PencilSimpleIcon} from '@phosphor-icons/react/PencilSimple';
 import {TrashIcon} from '@phosphor-icons/react/Trash';
+import {ListChecksIcon} from '@phosphor-icons/react/ListChecks';
+import {UserCircleDashedIcon} from '@phosphor-icons/react/UserCircleDashed';
+import {UserListIcon} from '@phosphor-icons/react/UserList';
+import {UploadSimpleIcon} from '@phosphor-icons/react/UploadSimple';
 import {AlertDialog} from '@astryxdesign/core/AlertDialog';
 import {Avatar} from '@astryxdesign/core/Avatar';
 import {Badge} from '@astryxdesign/core/Badge';
@@ -17,10 +21,12 @@ import {CheckboxInput} from '@astryxdesign/core/CheckboxInput';
 import {DateTimeInput, type ISODateTimeString} from '@astryxdesign/core/DateTimeInput';
 import {Dialog, DialogHeader} from '@astryxdesign/core/Dialog';
 import {DropdownMenu} from '@astryxdesign/core/DropdownMenu';
+import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {FileInput} from '@astryxdesign/core/FileInput';
 import {FormLayout} from '@astryxdesign/core/FormLayout';
 import {Heading} from '@astryxdesign/core/Heading';
 import {HStack, Layout, LayoutContent, LayoutFooter, StackItem, VStack} from '@astryxdesign/core/Layout';
+import {Icon} from '@astryxdesign/core/Icon';
 import {Pagination} from '@astryxdesign/core/Pagination';
 import {Tab, TabList} from '@astryxdesign/core/TabList';
 import {Table, pixel, proportional} from '@astryxdesign/core/Table';
@@ -30,6 +36,7 @@ import {TextInput} from '@astryxdesign/core/TextInput';
 import {useToast} from '@astryxdesign/core/Toast';
 import {Typeahead, TypeaheadItem, type SearchSource, type SearchableItem} from '@astryxdesign/core/Typeahead';
 import {parseVoters} from '@/lib/csv';
+import {ElectionEditorSkeleton} from '@/components/loading-states';
 import {fetchElection, fetchVoters, removeElection, saveElection} from '@/lib/api';
 import {
   eligibleVotersForEvent,
@@ -165,6 +172,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
         setElection({...loadedElection, eligibleVoterIds: loadedVoters.filter((voter) => voter.eligible).map((voter) => voter.memberId)});
         setVoters(loadedVoters);
       })
+      .catch(() => setElection(null))
       .finally(() => setIsReady(true));
   }, [eventId]);
 
@@ -553,7 +561,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     }
   }
 
-  if (!isReady) return null;
+  if (!isReady) return <ElectionEditorSkeleton />;
   if (!election) {
     return (
       <main className="admin-page">
@@ -797,7 +805,22 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                           />
                         </HStack>
                       </article>
-                    )) : <Text color="secondary">No candidates yet. Add the first candidate when you’re ready.</Text>}
+                    )) : (
+                      <EmptyState
+                        isCompact
+                        icon={<Icon icon={UserCircleDashedIcon} size="lg" />}
+                        title="No candidates yet"
+                        description="Add an eligible voter as the first candidate for this position."
+                        actions={
+                          <Button
+                            label={`Add a candidate for ${position.name}`}
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setCandidatePositionId(position.id)}
+                          />
+                        }
+                      />
+                    )}
                   </section>
                 </VStack>
               </Card>
@@ -805,10 +828,12 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
 
             {!election.positions.length ? (
               <Card variant="muted" padding={8}>
-                <VStack gap={2} hAlign="center">
-                  <Heading level={3}>No positions yet</Heading>
-                  <Text color="secondary">Add a position to start building the ballot.</Text>
-                </VStack>
+                <EmptyState
+                  icon={<Icon icon={ListChecksIcon} size="lg" />}
+                  title="No positions yet"
+                  description="Add a position to start building the ballot and its candidate list."
+                  actions={<Button label="Add the first position" variant="primary" onClick={openPositionCreator} />}
+                />
               </Card>
             ) : null}
           </VStack>
@@ -820,29 +845,41 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
               <Heading level={2}>Eligible voters</Heading>
               <Text color="secondary">See who can vote in this election, or replace the list with a new CSV.</Text>
             </VStack>
-            <DropdownMenu
-              button={{
-                label: 'Upload voter data',
-                variant: 'secondary',
-                isDisabled: isOpen,
-                tooltip: isOpen ? 'Voter data can’t be changed while this election is open.' : undefined,
-              }}
-              items={[
-                {
-                  label: 'Add data from CSV',
-                  description: 'Keep the current list and add matching Member IDs.',
-                  onClick: () => addVotersInputRef.current?.click(),
-                },
-                {
-                  label: 'Replace entire list',
-                  description: 'Remove the current list and replace it with this CSV.',
-                  variant: 'destructive',
-                  onClick: () => setIsReplaceVotersOpen(true),
-                },
-              ]}
-              presentation="adaptive"
-              alignment="end"
-            />
+            {voterRows.length ? (
+              <DropdownMenu
+                button={{
+                  label: 'Upload voter data',
+                  variant: 'secondary',
+                  icon: <UploadSimpleIcon />,
+                  isDisabled: isOpen,
+                  tooltip: isOpen ? 'Voter data can’t be changed while this election is open.' : undefined,
+                }}
+                items={[
+                  {
+                    label: 'Add data from CSV',
+                    description: 'Keep the current list and add matching Member IDs.',
+                    onClick: () => addVotersInputRef.current?.click(),
+                  },
+                  {
+                    label: 'Replace entire list',
+                    description: 'Remove the current list and replace it with this CSV.',
+                    variant: 'destructive',
+                    onClick: () => setIsReplaceVotersOpen(true),
+                  },
+                ]}
+                presentation="adaptive"
+                alignment="end"
+              />
+            ) : (
+              <Button
+                label="Upload voter data"
+                variant="secondary"
+                icon={<UploadSimpleIcon />}
+                onClick={() => addVotersInputRef.current?.click()}
+                isDisabled={isOpen}
+                tooltip={isOpen ? 'Voter data can’t be changed while this election is open.' : undefined}
+              />
+            )}
             <input
               ref={addVotersInputRef}
               className="sr-only"
@@ -879,7 +916,8 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
           ) : null}
 
           <section className="table-surface" aria-label={`Eligible voters for ${election.title}`}>
-            <Table<VoterRow>
+            {voterRows.length ? (
+              <Table<VoterRow>
               data={visibleVoterRows}
               idKey="memberId"
               density="balanced"
@@ -893,7 +931,23 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                 {key: 'name', header: 'Member name', width: proportional(2)},
                 {key: 'ageGroup', header: 'Age group', width: proportional(1)},
               ]}
-            />
+              />
+            ) : (
+              <EmptyState
+                icon={<Icon icon={UserListIcon} size="lg" />}
+                title="No eligible voters yet"
+                description="Upload a CSV to add the people who can vote in this election."
+                actions={
+                  <Button
+                    label="Upload voter data"
+                    variant="primary"
+                    icon={<UploadSimpleIcon />}
+                    onClick={() => addVotersInputRef.current?.click()}
+                    isDisabled={isOpen}
+                  />
+                }
+              />
+            )}
             {voterRows.length > VOTERS_PAGE_SIZE ? (
               <footer className="table-pagination">
                 <Pagination

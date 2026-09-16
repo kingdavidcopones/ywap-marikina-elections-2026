@@ -74,6 +74,25 @@ body {
   border-color: var(--color-border-emphasized);
 }
 
+.voter-link-state-card {
+  text-align: center;
+}
+
+.voter-countdown {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-3);
+}
+
+.voter-countdown article {
+  display: grid;
+  gap: var(--spacing-1);
+  padding: var(--spacing-3);
+  border-radius: var(--radius-container);
+  background: var(--color-background-muted);
+}
+
 .access-support {
   display: grid;
   gap: var(--spacing-1);
@@ -442,6 +461,14 @@ body {
   min-width: 0;
 }
 
+.collection-empty-state {
+  grid-column: 1 / -1;
+}
+
+.collection-loading-state {
+  padding: var(--spacing-6);
+}
+
 .position-form-card {
   max-width: 48rem;
   margin-bottom: var(--spacing-6);
@@ -614,6 +641,10 @@ progress::-moz-progress-bar {
 
   .verification-card {
     padding: var(--spacing-6);
+  }
+
+  .voter-countdown {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .ballot-topbar,

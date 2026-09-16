@@ -13,6 +13,7 @@ import {Section} from '@astryxdesign/core/Section';
 import {Text} from '@astryxdesign/core/Text';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {saveVoterSession, type VoterSession} from '@/lib/voter-session';
+import {isNetworkError, reportNetworkError} from '@/lib/network-error';
 
 export function VoterAccess({ballotSlug, onVerified}: {ballotSlug?: string; onVerified?: () => void}) {
   const router = useRouter();
@@ -43,7 +44,8 @@ export function VoterAccess({ballotSlug, onVerified}: {ballotSlug?: string; onVe
       saveVoterSession(result.voter);
       onVerified?.();
       router.push(`/vote/${result.voter.ballotSlug}`);
-    } catch {
+    } catch (cause) {
+      if (isNetworkError(cause)) reportNetworkError();
       setMessage('We can’t check your voter record right now. Check your connection, then try again.');
     } finally {
       setIsLoading(false);

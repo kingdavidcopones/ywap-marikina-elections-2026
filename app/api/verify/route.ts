@@ -21,9 +21,12 @@ export async function POST(request: NextRequest) {
     }
 
     const election = body.ballotSlug
-      ? await getElection(body.ballotSlug, {publicOnly: true})
-      : (await listElections({publicOnly: true})).find((item) => item.status === 'Open');
-    if (!election || election.status !== 'Open' || !election.opensAt || !election.closesAt || now < new Date(election.opensAt) || now > new Date(election.closesAt)) {
+      ? await getElection(body.ballotSlug)
+      : (await listElections({publicOnly: true})).find((item) => item.status === 'Open' || item.status === 'Published');
+    const canOpenAutomatically = election?.status === 'Scheduled' && Boolean(election.opensAt) && now >= new Date(election.opensAt);
+    const isPublished = election?.status === 'Published';
+    const isVotingStatus = election?.status === 'Open' || isPublished || canOpenAutomatically;
+    if (!election || !isVotingStatus || !election.opensAt || !election.closesAt || now < new Date(election.opensAt) || now > new Date(election.closesAt)) {
       return NextResponse.json({ok: false, message: 'There is no election open for voting right now.'}, {status: 404});
     }
 
@@ -42,6 +45,11 @@ export async function POST(request: NextRequest) {
     }
     if ((voter.participation as Array<{submitted_at: string | null}> | null)?.some((item) => item.submitted_at)) {
       return NextResponse.json({ok: false, message: 'A ballot has already been submitted for this voter.'}, {status: 409});
+    }
+
+    if (election.status !== 'Open') {
+      const {error: openError} = await supabase.from('elections').update({status: 'open'}).eq('id', election.id);
+      if (openError) throw new Error(openError.message);
     }
 
     await supabase.from('verification_attempts').delete().eq('client_key_hash', key);

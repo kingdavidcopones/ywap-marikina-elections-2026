@@ -1,20 +1,21 @@
 'use client';
 
 import {useEffect, useState} from 'react';
-import dynamic from 'next/dynamic';
-import {useRouter} from 'next/navigation';
+import {CalendarBlankIcon} from '@phosphor-icons/react/CalendarBlank';
+import {PlusIcon} from '@phosphor-icons/react/Plus';
 import {Button} from '@astryxdesign/core/Button';
 import {Badge} from '@astryxdesign/core/Badge';
 import {Card} from '@astryxdesign/core/Card';
+import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {Heading} from '@astryxdesign/core/Heading';
 import {HStack, VStack} from '@astryxdesign/core/Layout';
+import {Icon} from '@astryxdesign/core/Icon';
 import {Text} from '@astryxdesign/core/Text';
 import {
   type ElectionEvent,
 } from '@/lib/election-data';
 import {fetchElections} from '@/lib/api';
-
-const CreateElectionDialog = dynamic(() => import('@/components/create-election').then((module) => module.CreateElectionDialog));
+import {ElectionsPageSkeleton} from '@/components/loading-states';
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila',
@@ -31,13 +32,15 @@ function statusVariant(status: ElectionEvent['status']) {
   return 'neutral' as const;
 }
 
-export function ElectionDashboard({isCreateDialogOpen = false}: {isCreateDialogOpen?: boolean}) {
-  const router = useRouter();
+export function ElectionDashboard() {
   const [events, setEvents] = useState<ElectionEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    void fetchElections().then(setEvents);
+    void fetchElections().then(setEvents).catch(() => setEvents([])).finally(() => setIsLoading(false));
   }, []);
+
+  if (isLoading) return <ElectionsPageSkeleton />;
 
   return (
     <main className="admin-page">
@@ -46,11 +49,16 @@ export function ElectionDashboard({isCreateDialogOpen = false}: {isCreateDialogO
           <Heading level={1}>{events.length} election{events.length === 1 ? '' : 's'}</Heading>
           <Text color="secondary">Set up each ballot, manage who can vote, and share the voting link when you’re ready.</Text>
         </VStack>
-        <Button label="Create election" href="/admin?create=election" variant="primary" />
+        <Button
+          label="Create election"
+          variant="primary"
+          icon={<PlusIcon />}
+          onClick={() => window.dispatchEvent(new Event('open-create-election'))}
+        />
       </header>
 
       <section className="event-grid" aria-label="Election events">
-        {events.map((event) => {
+        {events.length ? events.map((event) => {
           const turnout = event.eligibleVoters ? event.ballotsSubmitted / event.eligibleVoters * 100 : 0;
           const isOpen = event.status === 'Open' || event.status === 'Published';
           const statusLabel = event.status === 'Published' ? 'Open' : event.status;
@@ -83,15 +91,24 @@ export function ElectionDashboard({isCreateDialogOpen = false}: {isCreateDialogO
               </VStack>
             </Card>
           );
-        })}
+        }) : (
+          <Card padding={8} className="collection-empty-state">
+            <EmptyState
+              icon={<Icon icon={CalendarBlankIcon} size="lg" />}
+              title="No elections yet"
+              description="Create an election to start building its ballot and adding eligible voters."
+              actions={
+                <Button
+                  label="Create your first election"
+                  variant="primary"
+                  icon={<PlusIcon />}
+                  onClick={() => window.dispatchEvent(new Event('open-create-election'))}
+                />
+              }
+            />
+          </Card>
+        )}
       </section>
-
-      {isCreateDialogOpen ? (
-        <CreateElectionDialog
-          isOpen
-          onOpenChange={(open) => { if (!open) router.replace('/admin'); }}
-        />
-      ) : null}
     </main>
   );
 }

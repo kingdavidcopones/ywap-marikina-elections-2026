@@ -4,6 +4,8 @@ import {useEffect, useState} from 'react';
 import {ArrowLeftIcon} from '@phosphor-icons/react/ArrowLeft';
 import {ArrowClockwiseIcon} from '@phosphor-icons/react/ArrowClockwise';
 import {CaretRightIcon} from '@phosphor-icons/react/CaretRight';
+import {ChartBarIcon} from '@phosphor-icons/react/ChartBar';
+import {PlusIcon} from '@phosphor-icons/react/Plus';
 import {Avatar} from '@astryxdesign/core/Avatar';
 import {Badge} from '@astryxdesign/core/Badge';
 import {Button} from '@astryxdesign/core/Button';
@@ -11,6 +13,7 @@ import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {Grid} from '@astryxdesign/core/Grid';
 import {Heading} from '@astryxdesign/core/Heading';
 import {HStack, VStack} from '@astryxdesign/core/Layout';
+import {Icon} from '@astryxdesign/core/Icon';
 import {List, ListItem} from '@astryxdesign/core/List';
 import {ProgressBar} from '@astryxdesign/core/ProgressBar';
 import {Section} from '@astryxdesign/core/Section';
@@ -20,6 +23,7 @@ import {
   type ElectionEvent,
 } from '@/lib/election-data';
 import {fetchElections, fetchResults} from '@/lib/api';
+import {LiveResultSkeleton, ResultsIndexSkeleton} from '@/components/loading-states';
 
 const dateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila',
@@ -38,10 +42,13 @@ function statusVariant(status: ElectionEvent['status']) {
 
 export function AdminResults() {
   const [events, setEvents] = useState<ElectionEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    void fetchElections().then(setEvents);
+    void fetchElections().then(setEvents).catch(() => setEvents([])).finally(() => setIsLoading(false));
   }, []);
+
+  if (isLoading) return <ResultsIndexSkeleton />;
 
   return (
     <main className="admin-page admin-results-index">
@@ -53,8 +60,9 @@ export function AdminResults() {
       </header>
 
       <section className="results-election-list" aria-label="Election results">
-        <List density="spacious" hasDividers>
-          {events.map((event) => {
+        {events.length ? (
+          <List density="spacious" hasDividers>
+            {events.map((event) => {
             const turnout = event.eligibleVoters
               ? event.ballotsSubmitted / event.eligibleVoters * 100
               : 0;
@@ -78,8 +86,23 @@ export function AdminResults() {
                 endContent={<CaretRightIcon aria-hidden="true" />}
               />
             );
-          })}
-        </List>
+            })}
+          </List>
+        ) : (
+          <EmptyState
+            icon={<Icon icon={ChartBarIcon} size="lg" />}
+            title="No elections to show"
+            description="Create an election first. Its turnout and results will appear here once ballots are available."
+            actions={
+              <Button
+                label="Create an election"
+                variant="primary"
+                icon={<PlusIcon />}
+                onClick={() => window.dispatchEvent(new Event('open-create-election'))}
+              />
+            }
+          />
+        )}
       </section>
     </main>
   );
@@ -100,13 +123,17 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
   }, [eventId]);
 
   async function refreshResults() {
-    const payload = await fetchResults(eventId);
-    setEvent(payload.election);
-    setResults(payload.results);
-    setRefreshMessage('Results refreshed just now.');
+    try {
+      const payload = await fetchResults(eventId);
+      setEvent(payload.election);
+      setResults(payload.results);
+      setRefreshMessage('Results refreshed just now.');
+    } catch {
+      setRefreshMessage('Results could not be refreshed. Try again.');
+    }
   }
 
-  if (!isReady) return null;
+  if (!isReady) return <LiveResultSkeleton />;
 
   if (!event) {
     return (
@@ -163,8 +190,9 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
         <article><Text type="supporting" color="secondary">Positions counted</Text><Text type="display-3" hasTabularNumbers>{results.length} / {event.positions.length}</Text></article>
       </section>
 
-      <Grid columns={{minWidth: 320, max: 2, repeat: 'fit'}} gap={5}>
-        {results.map((result) => {
+      {results.length ? (
+        <Grid columns={{minWidth: 320, max: 2, repeat: 'fit'}} gap={5}>
+          {results.map((result) => {
           const validVotes = result.nominees.reduce((total, nominee) => total + nominee.votes, 0);
           const sortedNominees = [...result.nominees].sort((a, b) => b.votes - a.votes);
           return (
@@ -180,7 +208,7 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
                 </HStack>
 
                 <VStack gap={5}>
-                  {sortedNominees.map((nominee) => (
+                  {sortedNominees.length ? sortedNominees.map((nominee) => (
                     <HStack key={nominee.id} gap={4} align="center">
                       <Avatar name={nominee.name} src={nominee.imageUrl} size="lg" shape="rounded" tooltip={false} />
                       <VStack gap={2} width="100%">
@@ -199,13 +227,28 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
                         />
                       </VStack>
                     </HStack>
-                  ))}
+                  )) : (
+                    <EmptyState
+                      isCompact
+                      title="No candidate totals yet"
+                      description="Candidate totals will appear after the ballot is fully configured."
+                    />
+                  )}
                 </VStack>
               </VStack>
             </Section>
           );
-        })}
-      </Grid>
+          })}
+        </Grid>
+      ) : (
+        <Section className="collection-empty-state" padding={8}>
+          <EmptyState
+            icon={<Icon icon={ChartBarIcon} size="lg" />}
+            title="No results yet"
+            description="Results will appear here after this election has positions and submitted ballots."
+          />
+        </Section>
+      )}
     </main>
   );
 }

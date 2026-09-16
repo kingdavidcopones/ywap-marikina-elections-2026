@@ -216,12 +216,12 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
                       label="Election name"
                       value={title}
                       onChange={(value) => { setTitle(value); setError(null); }}
-                      placeholder="e.g. Young Adults Council Election"
+                      placeholder="e.g. Youth Elections"
                       isRequired
                       width="100%"
                     />
                     <TextArea
-                      label="Description for voters"
+                      label="Description"
                       value={description}
                       onChange={setDescription}
                       placeholder="Tell voters what this election is for"

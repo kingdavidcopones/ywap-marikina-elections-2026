@@ -10,6 +10,12 @@ export type BallotDraft = {
   selections: Record<string, string>;
 };
 
+export type SubmissionReceipt = {
+  submittedAt: string;
+  electionTitle?: string;
+  ballotSlug?: string;
+};
+
 const VOTER_KEY = 'ywap-voter-session';
 const DRAFT_KEY = 'ywap-ballot-draft';
 const SUBMITTED_KEY = 'ywap-ballot-submitted';
@@ -34,14 +40,39 @@ export function saveBallotDraft(draft: BallotDraft) {
   window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
 }
 
-export function markSubmitted(submittedAt = new Date().toISOString()) {
-  window.sessionStorage.setItem(SUBMITTED_KEY, submittedAt);
+export function markSubmitted(submittedAt = new Date().toISOString(), electionTitle?: string, ballotSlug?: string) {
+  const receipt: SubmissionReceipt = {
+    submittedAt,
+    ...(electionTitle ? {electionTitle} : {}),
+    ...(ballotSlug ? {ballotSlug} : {}),
+  };
+  window.sessionStorage.setItem(SUBMITTED_KEY, JSON.stringify(receipt));
   window.sessionStorage.removeItem(DRAFT_KEY);
 }
 
-export function getSubmissionTime() {
+export function getSubmissionReceipt(): SubmissionReceipt | null {
   if (typeof window === 'undefined') return null;
-  return window.sessionStorage.getItem(SUBMITTED_KEY);
+  const value = window.sessionStorage.getItem(SUBMITTED_KEY);
+  if (!value) return null;
+
+  try {
+    const receipt = JSON.parse(value) as Partial<SubmissionReceipt>;
+    if (typeof receipt.submittedAt === 'string') {
+      return {
+        submittedAt: receipt.submittedAt,
+        ...(typeof receipt.electionTitle === 'string' ? {electionTitle: receipt.electionTitle} : {}),
+        ...(typeof receipt.ballotSlug === 'string' ? {ballotSlug: receipt.ballotSlug} : {}),
+      };
+    }
+  } catch {
+    // Older sessions stored only the ISO submission time as plain text.
+  }
+
+  return {submittedAt: value};
+}
+
+export function getSubmissionTime() {
+  return getSubmissionReceipt()?.submittedAt ?? null;
 }
 
 export function clearVoterSession() {

@@ -1,6 +1,7 @@
 'use client';
 
 import {FormEvent, useEffect, useState} from 'react';
+import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import {usePathname} from 'next/navigation';
 import {CalendarCheckIcon} from '@phosphor-icons/react/CalendarCheck';
@@ -27,12 +28,15 @@ import {
 import {Text} from '@astryxdesign/core/Text';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {VStack} from '@astryxdesign/core/VStack';
+import {isNetworkError, reportNetworkError} from '@/lib/network-error';
 
 const destinations = [
   {label: 'Elections', href: '/admin', icon: CalendarCheckIcon},
   {label: 'Live results', href: '/admin/results', icon: ChartBarIcon},
   {label: 'Audit log', href: '/admin/audit', icon: ClipboardTextIcon},
 ];
+
+const CreateElectionDialog = dynamic(() => import('@/components/create-election').then((module) => module.CreateElectionDialog));
 
 function isDestinationSelected(pathname: string, href: string) {
   if (href === '/admin') {
@@ -51,17 +55,23 @@ function AdminSignIn({onSignIn}: {onSignIn: () => void}) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsLoading(true);
-    const response = await fetch('/api/admin/session', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username, password}),
-    });
-    if (response.ok) {
-      setError('');
-      onSignIn();
-    } else {
-      const body = await response.json().catch(() => ({})) as {message?: string};
-      setError(body.message ?? 'That username and password don’t match. Check both and try again.');
+    try {
+      const response = await fetch('/api/admin/session', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username, password}),
+      });
+      if (response.ok) {
+        setError('');
+        onSignIn();
+      } else {
+        const body = await response.json().catch(() => ({})) as {message?: string};
+        setError(body.message ?? 'That username and password don’t match. Check both and try again.');
+      }
+    } catch (cause) {
+      if (isNetworkError(cause)) reportNetworkError();
+      setError('We couldn’t reach the server. Check your connection and try again.');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }
 
   return (
@@ -136,13 +146,35 @@ export function AdminShell({children}: {children: React.ReactNode}) {
   const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/admin/session', {cache: 'no-store'})
       .then((response) => response.json())
       .then((body: {authenticated?: boolean}) => setIsSignedIn(Boolean(body.authenticated)))
-      .catch(() => setIsSignedIn(false));
+      .catch((cause) => {
+        if (isNetworkError(cause)) reportNetworkError();
+        setIsSignedIn(false);
+      });
   }, []);
+
+  useEffect(() => {
+    const openCreateDialog = () => setIsCreateDialogOpen(true);
+    if (new URLSearchParams(window.location.search).get('create') === 'election') {
+      openCreateDialog();
+    }
+    window.addEventListener('open-create-election', openCreateDialog);
+    return () => window.removeEventListener('open-create-election', openCreateDialog);
+  }, []);
+
+  function setCreateDialogOpen(open: boolean) {
+    setIsCreateDialogOpen(open);
+    if (!open && new URLSearchParams(window.location.search).has('create')) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('create');
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+  }
 
   if (isSignedIn === null) {
     return null;
@@ -158,9 +190,13 @@ export function AdminShell({children}: {children: React.ReactNode}) {
   };
 
   async function handleLogout() {
-    await fetch('/api/admin/session', {method: 'DELETE'});
-    setIsLogoutOpen(false);
-    setIsSignedIn(false);
+    try {
+      await fetch('/api/admin/session', {method: 'DELETE'});
+      setIsLogoutOpen(false);
+      setIsSignedIn(false);
+    } catch (cause) {
+      if (isNetworkError(cause)) reportNetworkError();
+    }
   }
 
   return (
@@ -197,9 +233,9 @@ export function AdminShell({children}: {children: React.ReactNode}) {
             topContent={
               <Button
                 label="Create election"
-                href="/admin?create=election"
                 variant="primary"
                 icon={<PlusIcon />}
+                onClick={() => setIsCreateDialogOpen(true)}
                 isIconOnly={isNavCollapsed}
                 tooltip={isNavCollapsed ? 'Create election' : undefined}
                 width={isNavCollapsed ? undefined : '100%'}
@@ -231,6 +267,7 @@ export function AdminShell({children}: {children: React.ReactNode}) {
       >
         {children}
       </AppShell>
+      <CreateElectionDialog isOpen={isCreateDialogOpen} onOpenChange={setCreateDialogOpen} />
 
       <AlertDialog
         isOpen={isLogoutOpen}

@@ -3,19 +3,24 @@
 import {useEffect, useMemo, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import Image from 'next/image';
+import {ListChecksIcon} from '@phosphor-icons/react/ListChecks';
 import {AlertDialog} from '@astryxdesign/core/AlertDialog';
 import {AppShell} from '@astryxdesign/core/AppShell';
 import {Avatar} from '@astryxdesign/core/Avatar';
 import {Button} from '@astryxdesign/core/Button';
 import {Card} from '@astryxdesign/core/Card';
+import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {Heading} from '@astryxdesign/core/Heading';
 import {HStack, VStack} from '@astryxdesign/core/Layout';
+import {Icon} from '@astryxdesign/core/Icon';
 import {Text} from '@astryxdesign/core/Text';
 import {Banner} from '@astryxdesign/core/Banner';
 import {positionsForEventGroup, type ElectionEvent} from '@/lib/election-data';
 import {fetchElection} from '@/lib/api';
 import {getBallotDraft, getVoterSession, markSubmitted, saveBallotDraft, type VoterSession} from '@/lib/voter-session';
+import {isNetworkError, reportNetworkError} from '@/lib/network-error';
 import {AccessGate} from './access-gate';
+import {VoterFlowSkeleton} from './loading-states';
 
 export function BallotReview() {
   const router = useRouter();
@@ -35,7 +40,7 @@ export function BallotReview() {
       setReady(true);
       return;
     }
-    void fetchElection(session.ballotSlug).then(setElection).finally(() => setReady(true));
+    void fetchElection(session.ballotSlug).then(setElection).catch(() => setElection(null)).finally(() => setReady(true));
   }, []);
 
   const ballotPositions = useMemo(() => voter && election ? positionsForEventGroup(election, voter.ageGroup) : [], [election, voter]);
@@ -54,19 +59,26 @@ export function BallotReview() {
   async function submit() {
     setIsSubmitting(true);
     setSubmitError(null);
-    const response = await fetch('/api/ballots', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({selections})});
-    const body = await response.json().catch(() => ({})) as {submittedAt?: string; message?: string};
-    if (!response.ok || !body.submittedAt) {
-      setSubmitError(body.message ?? 'The ballot could not be submitted. Please try again.');
+    try {
+      const response = await fetch('/api/ballots', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({selections})});
+      const body = await response.json().catch(() => ({})) as {submittedAt?: string; message?: string};
+      if (!response.ok || !body.submittedAt) {
+        setSubmitError(body.message ?? 'The ballot could not be submitted. Please try again.');
+        setIsSubmitDialogOpen(false);
+        return;
+      }
+      markSubmitted(body.submittedAt, election?.title, voter?.ballotSlug);
+      router.push('/vote/confirmation');
+    } catch (cause) {
+      if (isNetworkError(cause)) reportNetworkError();
+      setSubmitError('The ballot could not be submitted. Check your connection and try again.');
       setIsSubmitDialogOpen(false);
+    } finally {
       setIsSubmitting(false);
-      return;
     }
-    markSubmitted(body.submittedAt);
-    router.push('/vote/confirmation');
   }
 
-  if (!ready) return null;
+  if (!ready) return <VoterFlowSkeleton />;
   if (!voter || !election) return <AccessGate />;
 
   return (
@@ -77,6 +89,7 @@ export function BallotReview() {
           <Button label="Back to ballot" variant="ghost" onClick={() => router.push(voter?.ballotSlug ? `/vote/${voter.ballotSlug}` : '/vote')} />
         </header>
         <section className="review-content">
+          {ballotPositions.length ? (
             <VStack gap={8}>
             {submitError ? <Banner status="error" title="Your ballot was not submitted" description={submitError} container="section" /> : null}
             <VStack gap={2}>
@@ -129,7 +142,18 @@ export function BallotReview() {
               <Button label="Make changes" variant="secondary" onClick={() => router.push(voter?.ballotSlug ? `/vote/${voter.ballotSlug}` : '/vote')} />
               <Button label="Submit ballot" variant="primary" onClick={requestSubmission} isDisabled={!complete} />
             </footer>
-          </VStack>
+            </VStack>
+          ) : (
+            <Card padding={8}>
+              <EmptyState
+                icon={<Icon icon={ListChecksIcon} size="lg" />}
+                title="There are no ballot choices to review"
+                description="Return to the ballot or contact the election committee if you expected to see positions here."
+                actions={<Button label="Return to ballot" variant="primary" onClick={() => router.push(voter.ballotSlug ? `/vote/${voter.ballotSlug}` : '/vote')} />}
+                headingLevel={1}
+              />
+            </Card>
+          )}
         </section>
       </main>
       <AlertDialog

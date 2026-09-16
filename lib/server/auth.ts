@@ -4,6 +4,7 @@ import {cookies} from 'next/headers';
 
 const ADMIN_COOKIE = 'ywap_admin';
 const VOTER_COOKIE = 'ywap_voter';
+const ADMIN_SESSION_SECONDS = 7 * 24 * 60 * 60;
 
 type SignedPayload = Record<string, unknown> & {exp: number};
 
@@ -46,8 +47,8 @@ export function adminCredentialsMatch(username: string, password: string) {
 
 export async function setAdminSession() {
   const jar = await cookies();
-  jar.set(ADMIN_COOKIE, sign({role: 'admin', exp: Date.now() + 12 * 60 * 60 * 1000}), {
-    httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/', maxAge: 12 * 60 * 60,
+  jar.set(ADMIN_COOKIE, sign({role: 'admin', exp: Date.now() + ADMIN_SESSION_SECONDS * 1000}), {
+    httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/', maxAge: ADMIN_SESSION_SECONDS,
   });
 }
 

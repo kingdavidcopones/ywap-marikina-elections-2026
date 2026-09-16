@@ -4,12 +4,15 @@ import {useEffect, useMemo, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import Image from 'next/image';
 import {CheckCircleIcon} from '@phosphor-icons/react/CheckCircle';
+import {ListChecksIcon} from '@phosphor-icons/react/ListChecks';
+import {UserCircleDashedIcon} from '@phosphor-icons/react/UserCircleDashed';
 import {AppShell} from '@astryxdesign/core/AppShell';
 import {Avatar} from '@astryxdesign/core/Avatar';
 import {Banner} from '@astryxdesign/core/Banner';
 import {Button} from '@astryxdesign/core/Button';
 import {Card} from '@astryxdesign/core/Card';
 import {Dialog, DialogHeader} from '@astryxdesign/core/Dialog';
+import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {Heading} from '@astryxdesign/core/Heading';
 import {HStack, Layout, LayoutContent, LayoutFooter, VStack} from '@astryxdesign/core/Layout';
 import {Icon} from '@astryxdesign/core/Icon';
@@ -24,6 +27,7 @@ import {
 import {fetchElection} from '@/lib/api';
 import {getBallotDraft, getVoterSession, saveBallotDraft, type VoterSession} from '@/lib/voter-session';
 import {AccessGate} from './access-gate';
+import {VoterFlowSkeleton} from './loading-states';
 
 export function BallotFlow({ballotSlug}: {ballotSlug?: string}) {
   const router = useRouter();
@@ -48,6 +52,7 @@ export function BallotFlow({ballotSlug}: {ballotSlug?: string}) {
     }
     void fetchElection(activeSlug)
       .then(setElection)
+      .catch(() => setElection(null))
       .finally(() => setReady(true));
   }, [ballotSlug]);
 
@@ -94,8 +99,25 @@ export function BallotFlow({ballotSlug}: {ballotSlug?: string}) {
     router.push('/');
   }
 
-  if (!ready) return null;
-  if (!voter || !election || !current) return <AccessGate />;
+  if (!ready) return <VoterFlowSkeleton />;
+  if (!voter || !election) return <AccessGate />;
+  if (!current) {
+    return (
+      <AppShell height="fill" variant="wash" contentPadding={0}>
+        <main className="gate-page">
+          <Card maxWidth={520} width="100%" padding={8}>
+            <EmptyState
+              icon={<Icon icon={ListChecksIcon} size="lg" />}
+              title="This ballot has no positions yet"
+              description="The election committee is still preparing this ballot. Check back after the election is ready."
+              actions={<Button label="Return to voter sign-in" href="/" variant="primary" />}
+              headingLevel={1}
+            />
+          </Card>
+        </main>
+      </AppShell>
+    );
+  }
 
   return (
     <>
@@ -171,6 +193,14 @@ export function BallotFlow({ballotSlug}: {ballotSlug?: string}) {
               <fieldset className="choice-fieldset">
                 <legend className="sr-only">Candidates for {current.name}</legend>
                 <VStack gap={4}>
+                  {!nominees.length ? (
+                    <EmptyState
+                      isCompact
+                      icon={<Icon icon={UserCircleDashedIcon} size="lg" />}
+                      title="No candidates are listed"
+                      description="The election committee has not added candidates for this position yet."
+                    />
+                  ) : null}
                   {nominees.map((nominee) => {
                     const selected = selections[current.id] === nominee.id;
                     return (

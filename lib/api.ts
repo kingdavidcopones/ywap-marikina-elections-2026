@@ -1,14 +1,22 @@
 import type {ElectionEvent, ElectionResult, EligibleVoter} from './election-data';
+import {isNetworkError, reportNetworkError} from './network-error';
+
+export type ElectionAvailability = Pick<ElectionEvent, 'ballotSlug' | 'title' | 'status' | 'opensAt' | 'closesAt'>;
 
 async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {'Content-Type': 'application/json', ...init?.headers},
-    cache: 'no-store',
-  });
-  const body = await response.json().catch(() => ({})) as {message?: string} & T;
-  if (!response.ok) throw new Error(body.message ?? 'The request could not be completed.');
-  return body;
+  try {
+    const response = await fetch(url, {
+      ...init,
+      headers: {'Content-Type': 'application/json', ...init?.headers},
+      cache: 'no-store',
+    });
+    const body = await response.json().catch(() => ({})) as {message?: string} & T;
+    if (!response.ok) throw new Error(body.message ?? 'The request could not be completed.');
+    return body;
+  } catch (error) {
+    if (isNetworkError(error)) reportNetworkError();
+    throw error;
+  }
 }
 
 export async function fetchElections() {
@@ -17,6 +25,10 @@ export async function fetchElections() {
 
 export async function fetchElection(identifier: string) {
   return (await jsonRequest<{election: ElectionEvent}>(`/api/elections/${encodeURIComponent(identifier)}`)).election;
+}
+
+export async function fetchElectionAvailability(identifier: string) {
+  return (await jsonRequest<{election: ElectionAvailability}>(`/api/elections/${encodeURIComponent(identifier)}/availability`)).election;
 }
 
 export async function fetchResults(identifier: string) {

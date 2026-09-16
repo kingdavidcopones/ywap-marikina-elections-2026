@@ -1,5 +1,7 @@
 'use client';
 
+import {useEffect} from 'react';
+import NextLink from 'next/link';
 import {ArrowDownIcon} from '@phosphor-icons/react/ArrowDown';
 import {ArrowsDownUpIcon} from '@phosphor-icons/react/ArrowsDownUp';
 import {ArrowSquareOutIcon} from '@phosphor-icons/react/ArrowSquareOut';
@@ -26,11 +28,19 @@ import {MicrophoneIcon} from '@phosphor-icons/react/Microphone';
 import {StopCircleIcon} from '@phosphor-icons/react/StopCircle';
 import {WarningCircleIcon} from '@phosphor-icons/react/WarningCircle';
 import {WrenchIcon} from '@phosphor-icons/react/Wrench';
+import {WifiXIcon} from '@phosphor-icons/react/WifiX';
 import {XCircleIcon} from '@phosphor-icons/react/XCircle';
 import {XIcon} from '@phosphor-icons/react/X';
+import {HStack} from '@astryxdesign/core/HStack';
+import {Icon} from '@astryxdesign/core/Icon';
+import {LayerProvider} from '@astryxdesign/core/Layer';
+import {LinkProvider} from '@astryxdesign/core/Link';
+import {Text} from '@astryxdesign/core/Text';
+import {useToast} from '@astryxdesign/core/Toast';
 import {Theme} from '@astryxdesign/core/theme';
 import type {DefinedTheme} from '@astryxdesign/core/theme';
 import {ywapMarikinaTheme} from '@/lib/ywap-marikina';
+import {NETWORK_ERROR_EVENT} from '@/lib/network-error';
 
 const ywapPhosphorTheme = {
   ...ywapMarikinaTheme,
@@ -67,10 +77,44 @@ const ywapPhosphorTheme = {
   },
 } satisfies DefinedTheme;
 
+function NetworkErrorListener() {
+  const toast = useToast();
+
+  useEffect(() => {
+    const showNetworkError = () => {
+      toast({
+        body: (
+          <HStack gap={2} align="center">
+            <Icon icon={WifiXIcon} color="error" size="sm" />
+            <Text>Network error. Check your Wi-Fi connection and try again.</Text>
+          </HStack>
+        ),
+        type: 'error',
+        uniqueID: 'network-error',
+        collisionBehavior: 'ignore',
+      });
+    };
+
+    window.addEventListener('offline', showNetworkError);
+    window.addEventListener(NETWORK_ERROR_EVENT, showNetworkError);
+    return () => {
+      window.removeEventListener('offline', showNetworkError);
+      window.removeEventListener(NETWORK_ERROR_EVENT, showNetworkError);
+    };
+  }, [toast]);
+
+  return null;
+}
+
 export function Providers({children}: {children: React.ReactNode}) {
   return (
     <Theme theme={ywapPhosphorTheme} mode="light">
-      {children}
+      <LinkProvider component={NextLink}>
+        <LayerProvider>
+          <NetworkErrorListener />
+          {children}
+        </LayerProvider>
+      </LinkProvider>
     </Theme>
   );
 }
