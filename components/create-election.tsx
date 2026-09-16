@@ -195,7 +195,7 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
 
   return (
     <>
-      <Dialog isOpen={isOpen && !isVoterPreviewOpen} onOpenChange={(open) => { if (!open) closeCreationDialog(); }} purpose="form" width={560}>
+      <Dialog isOpen={isOpen && !isVoterPreviewOpen} onOpenChange={(open) => { if (!open) closeCreationDialog(); }} purpose="required" width={560}>
         <Layout
           height="auto"
           defaultHasDividers
@@ -282,12 +282,11 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
                     <HStack gap={4} wrap="wrap">
                       <Text weight="semibold">{validVoterCount} valid</Text>
                       <Text weight={invalidVoterCount ? 'semibold' : undefined} color="secondary">{invalidVoterCount} need attention</Text>
-                      {voterRows.length > 10 ? <Text color="secondary">Showing the first 10 of {voterRows.length} rows</Text> : null}
                     </HStack>
                     {invalidVoterCount ? <Banner status="warning" title="Some voter records need attention" description="Replace the CSV after correcting the validation messages shown below." container="section" /> : null}
-                    <section className="table-surface" aria-label="Voter list preview">
+                    <section className="table-surface voter-preview-table" aria-label="Voter list preview" tabIndex={0}>
                       <Table<VoterPreviewRow>
-                        data={voterRows.slice(0, 10)}
+                        data={voterRows}
                         idKey="rowId"
                         density="compact"
                         dividers="rows"

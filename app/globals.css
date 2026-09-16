@@ -601,6 +601,11 @@ progress::-moz-progress-bar {
   background: var(--color-background-surface);
 }
 
+.voter-preview-table {
+  max-height: calc(var(--spacing-12) * 8);
+  overflow-y: auto;
+}
+
 .table-pagination {
   display: flex;
   justify-content: center;
