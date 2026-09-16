@@ -3,6 +3,7 @@
 import {FormEvent, useEffect, useMemo, useRef, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {ArrowLeftIcon} from '@phosphor-icons/react/ArrowLeft';
+import {ArrowUpRightIcon} from '@phosphor-icons/react/ArrowUpRight';
 import {ArchiveIcon} from '@phosphor-icons/react/Archive';
 import {CopySimpleIcon} from '@phosphor-icons/react/CopySimple';
 import {PencilSimpleIcon} from '@phosphor-icons/react/PencilSimple';
@@ -661,7 +662,14 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
             presentation="adaptive"
             alignment="end"
           />
-          <Button label={`${ballotLabel}: ${election.title}`} href={`/vote/${election.ballotSlug}`} variant="secondary">{ballotLabel}</Button>
+          <Button
+            label={`${ballotLabel}: ${election.title}`}
+            href={`/vote/${election.ballotSlug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="secondary"
+            endContent={<ArrowUpRightIcon aria-hidden="true" />}
+          >{ballotLabel}</Button>
           {election.status === 'Draft' ? (
             <DropdownMenu
               button={{label: 'Publish', variant: 'primary'}}

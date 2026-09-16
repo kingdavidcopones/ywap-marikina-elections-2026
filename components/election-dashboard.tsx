@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect, useState} from 'react';
+import {ArrowUpRightIcon} from '@phosphor-icons/react/ArrowUpRight';
 import {CalendarBlankIcon} from '@phosphor-icons/react/CalendarBlank';
 import {PlusIcon} from '@phosphor-icons/react/Plus';
 import {Button} from '@astryxdesign/core/Button';
@@ -86,7 +87,14 @@ export function ElectionDashboard() {
 
                 <HStack gap={3} justify="end">
                   <Button label={`Manage ${event.title}`} href={`/admin/elections/${event.id}`} variant="secondary">Manage event</Button>
-                  <Button label={`${ballotLabel}: ${event.title}`} href={`/vote/${ballotSlug}`} variant="secondary">{ballotLabel}</Button>
+                  <Button
+                    label={`${ballotLabel}: ${event.title}`}
+                    href={`/vote/${ballotSlug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    variant="secondary"
+                    endContent={<ArrowUpRightIcon aria-hidden="true" />}
+                  >{ballotLabel}</Button>
                 </HStack>
               </VStack>
             </Card>
