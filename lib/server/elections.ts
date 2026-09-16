@@ -1,5 +1,6 @@
 import 'server-only';
 import {createServerSupabaseClient} from '@/lib/supabase';
+import {normalizeCandidateImageUrl, signCandidateImageUrls} from '@/lib/server/candidate-images';
 import type {ElectionEvent, ElectionResult, ElectionSummary, EligibleVoter, Position} from '@/lib/election-data';
 
 export type ElectionAvailability = Pick<ElectionEvent, 'ballotSlug' | 'title' | 'status' | 'opensAt' | 'closesAt'>;
@@ -17,9 +18,12 @@ function assertData<T>(data: T | null, error: {message: string} | null): T {
   return data;
 }
 
-function mapElection(row: any): ElectionEvent {
+async function mapElection(row: any): Promise<ElectionEvent> {
   const eligibleVoters = Number(row.eligible_voters?.[0]?.count ?? 0);
   const ballotsSubmitted = Number(row.anonymous_ballots?.[0]?.count ?? 0);
+  const signedImages = await signCandidateImageUrls((row.positions ?? []).flatMap((position: any) => (
+    (position.nominees ?? []).map((nominee: any) => nominee.image_url)
+  ))).catch(() => new Map<string, string>());
   const positions = (row.positions ?? []).sort((a: any, b: any) => a.display_order - b.display_order).map((position: any) => ({
     id: position.id,
     name: position.name,
@@ -28,7 +32,11 @@ function mapElection(row: any): ElectionEvent {
     responsibilities: Array.isArray(position.responsibilities) ? position.responsibilities : [],
     abstainEnabled: position.abstain_enabled,
     nominees: (position.nominees ?? []).filter((item: any) => item.active).sort((a: any, b: any) => a.display_order - b.display_order).map((nominee: any) => ({
-      id: nominee.id, name: nominee.full_name, profile: nominee.short_profile ?? '', ageGroup: nominee.age_group ? groupFromDb[nominee.age_group] : undefined, imageUrl: nominee.image_url ?? undefined,
+      id: nominee.id,
+      name: nominee.full_name,
+      profile: nominee.short_profile ?? '',
+      ageGroup: nominee.age_group ? groupFromDb[nominee.age_group] : undefined,
+      imageUrl: signedImages.get(nominee.image_url) ?? (nominee.image_url?.startsWith('candidate-image://') ? undefined : nominee.image_url ?? undefined),
     })),
   }));
   return {
@@ -73,7 +81,7 @@ export async function getElection(identifier: string, options?: {publicOnly?: bo
   if (options?.publicOnly) query = query.in('status', ['open', 'closed', 'published']);
   const {data, error} = await query.maybeSingle();
   if (error) throw new Error(error.message);
-  return data ? mapElection(data) : null;
+  return data ? await mapElection(data) : null;
 }
 
 export async function getElectionAvailability(identifier: string): Promise<ElectionAvailability | null> {
@@ -124,7 +132,17 @@ export async function getElectionVoters(electionId: string): Promise<EligibleVot
 
 export async function syncElection(election: ElectionEvent, voters?: EligibleVoter[]) {
   const supabase = createServerSupabaseClient();
-  const {error} = await supabase.rpc('sync_election', {p_election: election, p_voters: voters ?? null});
+  const normalizedElection = {
+    ...election,
+    positions: election.positions.map((position) => ({
+      ...position,
+      nominees: position.nominees.map((nominee) => ({
+        ...nominee,
+        imageUrl: normalizeCandidateImageUrl(nominee.imageUrl),
+      })),
+    })),
+  };
+  const {error} = await supabase.rpc('sync_election', {p_election: normalizedElection, p_voters: voters ?? null});
   if (error) throw new Error(error.message);
   const saved = await getElection(election.id);
   if (!saved) throw new Error('The election was not saved.');

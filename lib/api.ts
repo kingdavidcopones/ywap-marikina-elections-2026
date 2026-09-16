@@ -35,6 +35,18 @@ export async function fetchResults(identifier: string) {
   return jsonRequest<{election: ElectionEvent; results: ElectionResult[]}>(`/api/elections/${encodeURIComponent(identifier)}/results`);
 }
 
+export async function uploadCandidateImage(nomineeId: string, file: File) {
+  const formData = new FormData();
+  formData.set('file', file);
+  const response = await fetch(`/api/admin/nominees/${encodeURIComponent(nomineeId)}/image`, {
+    method: 'POST',
+    body: formData,
+  });
+  const body = await response.json().catch(() => ({})) as {imageUrl?: string; message?: string};
+  if (!response.ok || !body.imageUrl) throw new Error(body.message ?? 'The candidate image could not be uploaded.');
+  return body.imageUrl;
+}
+
 export async function saveElection(election: ElectionEvent, voters?: EligibleVoter[]) {
   return (await jsonRequest<{election: ElectionEvent}>(`/api/admin/elections/${election.id}`, {
     method: 'PUT', body: JSON.stringify({election, voters}),

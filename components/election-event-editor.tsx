@@ -38,7 +38,7 @@ import {useToast} from '@astryxdesign/core/Toast';
 import {Typeahead, TypeaheadItem, type SearchSource, type SearchableItem} from '@astryxdesign/core/Typeahead';
 import {parseVoters} from '@/lib/csv';
 import {ElectionEditorSkeleton} from '@/components/loading-states';
-import {fetchElection, fetchVoters, removeElection, saveElection} from '@/lib/api';
+import {fetchElection, fetchVoters, removeElection, saveElection, uploadCandidateImage} from '@/lib/api';
 import {
   eligibleVotersForEvent,
   type ElectionEvent,
@@ -81,15 +81,6 @@ function voterSource(voters: EligibleVoter[]): SearchSource<VoterItem> {
     },
     bootstrap: () => items.slice(0, 10),
   };
-}
-
-function fileToDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
 }
 
 function statusVariant(status: ElectionEvent['status']) {
@@ -360,7 +351,13 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       toast({body: `${voter.name} is already a candidate for ${position?.name}.`, type: 'error', uniqueID: 'candidate-update-duplicate'});
       return;
     }
-    const imageUrl = candidateEditImage ? await fileToDataUrl(candidateEditImage) : undefined;
+    let imageUrl: string | undefined;
+    try {
+      imageUrl = candidateEditImage ? await uploadCandidateImage(editingCandidate.nomineeId, candidateEditImage) : undefined;
+    } catch (error) {
+      toast({body: error instanceof Error ? error.message : 'The candidate photo could not be uploaded.', type: 'error', uniqueID: 'candidate-photo-upload-error'});
+      return;
+    }
     const updatedPositions = election.positions.map((position) => position.id === editingCandidate.positionId ? {
       ...position,
       nominees: position.nominees.map((nominee) => nominee.id === editingCandidate.nomineeId ? {
@@ -493,11 +490,18 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       toast({body: `${voter.name} is already a candidate for ${position.name}.`, type: 'error', uniqueID: 'candidate-add-duplicate'});
       return;
     }
-    const imageUrl = candidateImage ? await fileToDataUrl(candidateImage) : undefined;
+    const nomineeId = crypto.randomUUID();
+    let imageUrl: string | undefined;
+    try {
+      imageUrl = candidateImage ? await uploadCandidateImage(nomineeId, candidateImage) : undefined;
+    } catch (error) {
+      toast({body: error instanceof Error ? error.message : 'The candidate photo could not be uploaded.', type: 'error', uniqueID: 'candidate-photo-upload-error'});
+      return;
+    }
     const updatedPositions = election.positions.map((item) => item.id === position.id ? {
       ...item,
       nominees: [...item.nominees, {
-        id: crypto.randomUUID(),
+        id: nomineeId,
         name: voter.name,
         profile: voter.ageGroup,
         ageGroup: voter.ageGroup,
