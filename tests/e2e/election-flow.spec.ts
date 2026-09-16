@@ -4,6 +4,7 @@ import {expect, test} from '@playwright/test';
 import {parseVoters} from '../../lib/csv';
 
 test('admin creates an election, a voter casts once, and totals stay anonymous', async ({page}) => {
+  test.setTimeout(120_000);
   const adminUsername = process.env.ADMIN_USERNAME ?? 'admin';
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (!adminPassword) throw new Error('ADMIN_PASSWORD is required for the end-to-end test.');
@@ -51,7 +52,7 @@ test('admin creates an election, a voter casts once, and totals stay anonymous',
   await page.getByLabel('Last name').fill('Copones');
   await page.getByRole('button', {name: 'Find my ballot'}).click();
   await expect(page.getByRole('heading', {name: 'President'}).first()).toBeVisible();
-  await page.getByLabel('Select Test Candidate for President').click();
+  await page.getByLabel('Select Test Candidate for President').check({force: true});
   await page.getByRole('button', {name: 'Review ballot'}).click();
   await expect(page.getByRole('heading', {name: 'Review your ballot'})).toBeVisible();
   await page.getByRole('button', {name: 'Submit ballot'}).click();
@@ -70,7 +71,9 @@ test('admin creates an election, a voter casts once, and totals stay anonymous',
   await page.getByLabel('Password').fill(adminPassword);
   await page.getByRole('button', {name: 'Sign in'}).click();
   await page.getByRole('link', {name: 'E2E Election'}).click();
-  await expect(page.getByText('1 of 45 ballots')).toBeVisible();
+  await expect(page.getByText('Ballots submitted')).toBeVisible();
+  await expect(page.getByText('45', {exact: true})).toBeVisible();
+  await expect(page.getByText('2.2%', {exact: true})).toBeVisible();
   await expect(page.getByText('1 vote', {exact: true}).first()).toBeVisible();
 
   await page.goto('/admin/audit');

@@ -218,7 +218,9 @@ begin
   select count(*) into v_expected_count from public.positions p
   join public.eligible_voters v on v.id = p_voter_id
   where p.election_id = p_election_id and (p.group_scope = 'general' or p.group_scope = v.age_group::text);
-  if jsonb_object_length(p_selections) <> v_expected_count then raise exception 'The ballot is incomplete.'; end if;
+  if (select count(*) from jsonb_object_keys(p_selections)) <> v_expected_count then
+    raise exception 'The ballot is incomplete.';
+  end if;
 
   insert into public.anonymous_ballots (election_id, submitted_at) values (p_election_id, v_submitted_at) returning id into v_ballot_id;
   for v_position in select p.* from public.positions p join public.eligible_voters v on v.id = p_voter_id
