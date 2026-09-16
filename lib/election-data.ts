@@ -47,6 +47,10 @@ export type ElectionEvent = {
   positions: Position[];
 };
 
+export type ElectionSummary = Omit<ElectionEvent, 'positions'> & {
+  positionCount: number;
+};
+
 export type ElectionResult = {
   position: string;
   group: Position['group'];

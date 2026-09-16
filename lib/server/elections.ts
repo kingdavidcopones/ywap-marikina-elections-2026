@@ -1,6 +1,6 @@
 import 'server-only';
 import {createServerSupabaseClient} from '@/lib/supabase';
-import type {ElectionEvent, ElectionResult, EligibleVoter, Position} from '@/lib/election-data';
+import type {ElectionEvent, ElectionResult, ElectionSummary, EligibleVoter, Position} from '@/lib/election-data';
 
 export type ElectionAvailability = Pick<ElectionEvent, 'ballotSlug' | 'title' | 'status' | 'opensAt' | 'closesAt'>;
 
@@ -39,14 +39,31 @@ function mapElection(row: any): ElectionEvent {
 }
 
 const electionSelect = '*, positions(*, nominees(*)), eligible_voters(count), anonymous_ballots(count)';
+const electionSummarySelect = 'id, ballot_slug, title, description, status, election_date, opens_at, closes_at, positions(count), eligible_voters(count), anonymous_ballots(count)';
 
-export async function listElections(options?: {publicOnly?: boolean}) {
+function mapElectionSummary(row: any): ElectionSummary {
+  return {
+    id: row.id,
+    ballotSlug: row.ballot_slug,
+    title: row.title,
+    description: row.description,
+    status: statusFromDb[row.status] ?? 'Draft',
+    electionDate: row.election_date ?? '',
+    opensAt: row.opens_at ?? '',
+    closesAt: row.closes_at ?? '',
+    eligibleVoters: Number(row.eligible_voters?.[0]?.count ?? 0),
+    ballotsSubmitted: Number(row.anonymous_ballots?.[0]?.count ?? 0),
+    positionCount: Number(row.positions?.[0]?.count ?? 0),
+  };
+}
+
+export async function listElections(options?: {publicOnly?: boolean}): Promise<ElectionSummary[]> {
   const supabase = createServerSupabaseClient();
-  let query = supabase.from('elections').select(electionSelect).eq('eligible_voters.eligible', true).order('created_at', {ascending: false});
+  let query = supabase.from('elections').select(electionSummarySelect).eq('eligible_voters.eligible', true).order('created_at', {ascending: false});
   if (options?.publicOnly) query = query.in('status', ['open', 'closed', 'published']);
   const {data, error} = await query;
   const rows = assertData(data, error);
-  return (rows as any[]).map(mapElection);
+  return (rows as any[]).map(mapElectionSummary);
 }
 
 export async function getElection(identifier: string, options?: {publicOnly?: boolean}) {

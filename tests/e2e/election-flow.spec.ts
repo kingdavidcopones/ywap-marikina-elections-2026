@@ -47,6 +47,12 @@ test('admin creates an election, a voter casts once, and totals stay anonymous',
   };
   const setup = await page.request.put(`/api/admin/elections/${eventId}`, {data: {election}});
   expect(setup.ok()).toBeTruthy();
+  const electionList = await page.request.get('/api/elections');
+  expect(electionList.ok()).toBeTruthy();
+  const listedElections = await electionList.json() as {elections: Array<{id: string; positionCount: number; positions?: unknown}>};
+  const listedElection = listedElections.elections.find((item) => item.id === eventId);
+  expect(listedElection?.positionCount).toBe(1);
+  expect(listedElection?.positions).toBeUndefined();
 
   await page.goto(`/vote/${slug}`);
   await page.getByLabel('YWAP Marikina Member ID').fill('CODEX-E2E-0001');
@@ -70,6 +76,9 @@ test('admin creates an election, a voter casts once, and totals stay anonymous',
   await page.getByRole('button', {name: 'Sign in'}).click();
   await page.getByRole('link').filter({hasText: electionTitle}).click();
   await expect(page.getByText('Ballots submitted')).toBeVisible();
+  const peopleVotedKpi = page.locator('article').filter({hasText: 'People voted'});
+  await expect(peopleVotedKpi).toBeVisible();
+  await expect(peopleVotedKpi.getByText('1 / 1', {exact: true})).toBeVisible();
   await expect(page.getByText('1', {exact: true}).first()).toBeVisible();
   await expect(page.getByText('100.0%', {exact: true})).toBeVisible();
   await expect(page.getByText('1 vote', {exact: true}).first()).toBeVisible();

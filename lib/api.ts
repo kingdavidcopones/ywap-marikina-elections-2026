@@ -1,4 +1,4 @@
-import type {ElectionEvent, ElectionResult, EligibleVoter} from './election-data';
+import type {ElectionEvent, ElectionResult, ElectionSummary, EligibleVoter} from './election-data';
 import {isNetworkError, reportNetworkError} from './network-error';
 
 export type ElectionAvailability = Pick<ElectionEvent, 'ballotSlug' | 'title' | 'status' | 'opensAt' | 'closesAt'>;
@@ -20,7 +20,7 @@ async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export async function fetchElections() {
-  return (await jsonRequest<{elections: ElectionEvent[]}>('/api/elections')).elections;
+  return (await jsonRequest<{elections: ElectionSummary[]}>('/api/elections')).elections;
 }
 
 export async function fetchElection(identifier: string) {

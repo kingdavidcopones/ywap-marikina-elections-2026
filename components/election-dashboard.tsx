@@ -12,7 +12,7 @@ import {HStack, VStack} from '@astryxdesign/core/Layout';
 import {Icon} from '@astryxdesign/core/Icon';
 import {Text} from '@astryxdesign/core/Text';
 import {
-  type ElectionEvent,
+  type ElectionSummary,
 } from '@/lib/election-data';
 import {fetchElections} from '@/lib/api';
 import {ElectionsPageSkeleton} from '@/components/loading-states';
@@ -21,19 +21,19 @@ const dateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila',
 });
 
-function formatSchedule(event: ElectionEvent) {
+function formatSchedule(event: ElectionSummary) {
   if (!event.electionDate) return 'Not scheduled';
   return dateFormatter.format(new Date(`${event.electionDate}T00:00:00+08:00`));
 }
 
-function statusVariant(status: ElectionEvent['status']) {
+function statusVariant(status: ElectionSummary['status']) {
   if (status === 'Open' || status === 'Published') return 'success' as const;
   if (status === 'Scheduled') return 'warning' as const;
   return 'neutral' as const;
 }
 
 export function ElectionDashboard() {
-  const [events, setEvents] = useState<ElectionEvent[]>([]);
+  const [events, setEvents] = useState<ElectionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -80,7 +80,7 @@ export function ElectionDashboard() {
 
                 <section className="event-metrics" aria-label={`${event.title} summary`}>
                   <article><Text type="supporting" color="secondary">Eligible voters</Text><Text type="large" weight="semibold" hasTabularNumbers>{event.eligibleVoters}</Text></article>
-                  <article><Text type="supporting" color="secondary">Positions</Text><Text type="large" weight="semibold" hasTabularNumbers>{event.positions.length}</Text></article>
+                  <article><Text type="supporting" color="secondary">Positions</Text><Text type="large" weight="semibold" hasTabularNumbers>{event.positionCount}</Text></article>
                   <article><Text type="supporting" color="secondary">Turnout</Text><Text type="large" weight="semibold" hasTabularNumbers>{turnout.toFixed(1)}%</Text></article>
                 </section>
 

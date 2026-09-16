@@ -441,6 +441,7 @@ body {
 }
 
 .live-result-overview {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-top: 0;
   margin-bottom: var(--spacing-8);
 }

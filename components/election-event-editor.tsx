@@ -6,6 +6,7 @@ import {ArrowLeftIcon} from '@phosphor-icons/react/ArrowLeft';
 import {ArchiveIcon} from '@phosphor-icons/react/Archive';
 import {CopySimpleIcon} from '@phosphor-icons/react/CopySimple';
 import {PencilSimpleIcon} from '@phosphor-icons/react/PencilSimple';
+import {PlusIcon} from '@phosphor-icons/react/Plus';
 import {TrashIcon} from '@phosphor-icons/react/Trash';
 import {ListChecksIcon} from '@phosphor-icons/react/ListChecks';
 import {UserCircleDashedIcon} from '@phosphor-icons/react/UserCircleDashed';
@@ -669,7 +670,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
             />
           ) : null}
           {election.status === 'Scheduled' || isOpen ? (
-            <Button label="Unpublish election" variant="primary" onClick={() => setPendingStatusAction('unpublish')}>Unpublish</Button>
+            <Button label="Unpublish election" variant="destructive" onClick={() => setPendingStatusAction('unpublish')}>Unpublish</Button>
           ) : null}
           {election.status === 'Archived' ? (
             <Button label="Restore election to draft" variant="primary" onClick={() => setPendingStatusAction('restore')}>Restore</Button>
@@ -677,17 +678,19 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
         </HStack>
       </header>
 
-      <section className="event-overview" aria-label="Election event summary">
-        <article><Text type="supporting" color="secondary">Eligible voters</Text><Text type="display-3" hasTabularNumbers>{eventVoters.length}</Text></article>
-        <article><Text type="supporting" color="secondary">Positions</Text><Text type="display-3" hasTabularNumbers>{election.positions.length}</Text></article>
-        <article><Text type="supporting" color="secondary">Candidates</Text><Text type="display-3" hasTabularNumbers>{election.positions.reduce((total, position) => total + position.nominees.length, 0)}</Text></article>
-        <article><Text type="supporting" color="secondary">Voting link</Text><Text weight="semibold">/vote/{election.ballotSlug}</Text></article>
-      </section>
+      <VStack gap={6}>
+        <section className="event-overview" aria-label="Election event summary">
+          <article><Text type="supporting" color="secondary">Eligible voters</Text><Text type="display-3" hasTabularNumbers>{eventVoters.length}</Text></article>
+          <article><Text type="supporting" color="secondary">Positions</Text><Text type="display-3" hasTabularNumbers>{election.positions.length}</Text></article>
+          <article><Text type="supporting" color="secondary">Candidates</Text><Text type="display-3" hasTabularNumbers>{election.positions.reduce((total, position) => total + position.nominees.length, 0)}</Text></article>
+          <article><Text type="supporting" color="secondary">Voting link</Text><Text weight="semibold">/vote/{election.ballotSlug}</Text></article>
+        </section>
 
-      <TabList value={tab} onChange={setTab} role="tablist" hasDivider size="lg">
-        <Tab value="positions" label="Positions" panelId="positions-panel" />
-        <Tab value="eligible-voters" label="Eligible voters" panelId="eligible-voters-panel" />
-      </TabList>
+        <TabList value={tab} onChange={setTab} role="tablist" hasDivider size="lg">
+          <Tab value="positions" label="Positions" panelId="positions-panel" />
+          <Tab value="eligible-voters" label="Eligible voters" panelId="eligible-voters-panel" />
+        </TabList>
+      </VStack>
 
       {tab === 'positions' ? (
         <section id="positions-panel" role="tabpanel" className="dashboard-section" aria-label="Election positions">
@@ -696,7 +699,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
               <Heading level={2}>Positions and candidates</Heading>
               <Text color="secondary">Saved changes appear on the voter ballot right away.</Text>
             </VStack>
-            <Button label="Add position" variant="primary" onClick={openPositionCreator} />
+            <Button label="Add position" variant="primary" icon={<PlusIcon />} onClick={openPositionCreator} />
           </header>
 
           {!eventVoters.length ? (
@@ -716,6 +719,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                       <Button
                         label={`Add candidate for ${position.name}`}
                         variant="secondary"
+                        icon={<PlusIcon />}
                         onClick={() => {
                           setCandidatePositionId((current) => current === position.id ? null : position.id);
                           setSelectedVoter(null);
@@ -816,6 +820,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                             label={`Add a candidate for ${position.name}`}
                             variant="secondary"
                             size="sm"
+                            icon={<PlusIcon />}
                             onClick={() => setCandidatePositionId(position.id)}
                           />
                         }
@@ -832,7 +837,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                   icon={<Icon icon={ListChecksIcon} size="lg" />}
                   title="No positions yet"
                   description="Add a position to start building the ballot and its candidate list."
-                  actions={<Button label="Add the first position" variant="primary" onClick={openPositionCreator} />}
+                  actions={<Button label="Add the first position" variant="primary" icon={<PlusIcon />} onClick={openPositionCreator} />}
                 />
               </Card>
             ) : null}

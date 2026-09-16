@@ -21,6 +21,7 @@ import {Text} from '@astryxdesign/core/Text';
 import {
   type ElectionResult,
   type ElectionEvent,
+  type ElectionSummary,
 } from '@/lib/election-data';
 import {fetchElections, fetchResults} from '@/lib/api';
 import {LiveResultSkeleton, ResultsIndexSkeleton} from '@/components/loading-states';
@@ -29,7 +30,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila',
 });
 
-function formatElectionDate(event: ElectionEvent) {
+function formatElectionDate(event: ElectionSummary) {
   if (!event.electionDate) return 'Not scheduled';
   return dateFormatter.format(new Date(`${event.electionDate}T00:00:00+08:00`));
 }
@@ -41,7 +42,7 @@ function statusVariant(status: ElectionEvent['status']) {
 }
 
 export function AdminResults() {
-  const [events, setEvents] = useState<ElectionEvent[]>([]);
+  const [events, setEvents] = useState<ElectionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -186,6 +187,7 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
       <section className="event-overview live-result-overview" aria-label="Live election totals">
         <article><Text type="supporting" color="secondary">Eligible voters</Text><Text type="display-3" hasTabularNumbers>{event.eligibleVoters}</Text></article>
         <article><Text type="supporting" color="secondary">Ballots submitted</Text><Text type="display-3" hasTabularNumbers>{event.ballotsSubmitted}</Text></article>
+        <article><Text type="supporting" color="secondary">People voted</Text><Text type="display-3" hasTabularNumbers>{event.ballotsSubmitted} / {event.eligibleVoters}</Text></article>
         <article><Text type="supporting" color="secondary">Turnout</Text><Text type="display-3" hasTabularNumbers>{turnout.toFixed(1)}%</Text></article>
         <article><Text type="supporting" color="secondary">Positions counted</Text><Text type="display-3" hasTabularNumbers>{results.length} / {event.positions.length}</Text></article>
       </section>
