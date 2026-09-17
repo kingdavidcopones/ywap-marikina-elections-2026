@@ -1,4 +1,5 @@
 import type {ElectionEvent, ElectionResult, ElectionSummary, EligibleVoter, IndividualVoteRecord} from './election-data';
+import type {Nomination, NominationEntry, NominationSummary, YouthRecord} from './nomination-data';
 import {isNetworkError, reportNetworkError} from './network-error';
 
 export type ElectionAvailability = Pick<ElectionEvent, 'ballotSlug' | 'title' | 'status' | 'opensAt' | 'closesAt'>;
@@ -21,6 +22,38 @@ async function jsonRequest<T>(url: string, init?: RequestInit): Promise<T> {
 
 export async function fetchElections() {
   return (await jsonRequest<{elections: ElectionSummary[]}>('/api/elections')).elections;
+}
+
+export async function fetchNominations() {
+  return (await jsonRequest<{nominations: NominationSummary[]}>('/api/admin/nominations')).nominations;
+}
+
+export async function createNomination(name: string, description: string) {
+  return (await jsonRequest<{nomination: Nomination}>('/api/admin/nominations', {
+    method: 'POST', body: JSON.stringify({name, description}),
+  })).nomination;
+}
+
+export async function fetchAdminNomination(id: string) {
+  return (await jsonRequest<{nomination: Nomination}>(`/api/admin/nominations/${encodeURIComponent(id)}`)).nomination;
+}
+
+export async function fetchNominationNominees(id: string, page: number) {
+  return jsonRequest<{nominees: NominationEntry[]; total: number}>(`/api/admin/nominations/${encodeURIComponent(id)}/nominees?page=${page}`);
+}
+
+export async function fetchNominationYouthRecords(id: string, page: number) {
+  return jsonRequest<{records: YouthRecord[]; total: number}>(`/api/admin/nominations/${encodeURIComponent(id)}/youth-records?page=${page}`);
+}
+
+export async function updateAdminNomination(id: string, action: Record<string, unknown>) {
+  return (await jsonRequest<{nomination: Nomination}>(`/api/admin/nominations/${encodeURIComponent(id)}`, {
+    method: 'PATCH', body: JSON.stringify(action),
+  })).nomination;
+}
+
+export async function fetchPublicNomination(slug: string) {
+  return jsonRequest<{nomination: Nomination; preview: boolean}>(`/api/nominations/${encodeURIComponent(slug)}`);
 }
 
 export async function fetchElection(identifier: string) {

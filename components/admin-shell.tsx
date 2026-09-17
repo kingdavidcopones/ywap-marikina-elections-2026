@@ -10,6 +10,7 @@ import {CaretDoubleRightIcon} from '@phosphor-icons/react/CaretDoubleRight';
 import {ChartBarIcon} from '@phosphor-icons/react/ChartBar';
 import {ClipboardTextIcon} from '@phosphor-icons/react/ClipboardText';
 import {PlusIcon} from '@phosphor-icons/react/Plus';
+import {UserPlusIcon} from '@phosphor-icons/react/UserPlus';
 import {SignOutIcon} from '@phosphor-icons/react/SignOut';
 import {AlertDialog} from '@astryxdesign/core/AlertDialog';
 import {AppShell} from '@astryxdesign/core/AppShell';
@@ -32,6 +33,7 @@ import {isNetworkError, reportNetworkError} from '@/lib/network-error';
 
 const destinations = [
   {label: 'Elections', href: '/admin', icon: CalendarCheckIcon},
+  {label: 'Nominations', href: '/admin/nominations', icon: UserPlusIcon},
   {label: 'Live results', href: '/admin/results', icon: ChartBarIcon},
   {label: 'Audit log', href: '/admin/audit', icon: ClipboardTextIcon},
 ];
