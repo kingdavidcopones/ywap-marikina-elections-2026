@@ -29,6 +29,11 @@ export function getVoterSession(): VoterSession | null {
 }
 
 export function saveVoterSession(voter: VoterSession) {
+  const previous = getVoterSession();
+  if (!previous || previous.memberId !== voter.memberId || previous.ballotSlug !== voter.ballotSlug) {
+    window.sessionStorage.removeItem(DRAFT_KEY);
+    window.sessionStorage.removeItem(SUBMITTED_KEY);
+  }
   window.sessionStorage.setItem(VOTER_KEY, JSON.stringify(voter));
 }
 
@@ -82,4 +87,5 @@ export function getSubmissionTime() {
 export function clearVoterSession() {
   window.sessionStorage.removeItem(VOTER_KEY);
   window.sessionStorage.removeItem(DRAFT_KEY);
+  window.sessionStorage.removeItem(SUBMITTED_KEY);
 }

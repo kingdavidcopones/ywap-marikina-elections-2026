@@ -140,21 +140,16 @@ export function BallotReview() {
               })}
             </VStack>
 
-            <Card variant="yellow" padding={6}>
-              <VStack gap={2}>
-                {election.anonymousVoting ? (
-                  <>
-                    <Heading level={3}>Your choices stay private</Heading>
-                    <Text as="p">We record that you voted, but keep that record separate from the choices on your ballot.</Text>
-                  </>
-                ) : (
-                  <>
-                    <Heading level={3}>Your choices are recorded with your identity</Heading>
-                    <Text as="p">Election administrators can see your choices together with your name and member ID after you submit.</Text>
-                  </>
-                )}
-              </VStack>
-            </Card>
+            {election.anonymousVoting ? (
+              <Card variant="yellow" padding={6}>
+                <VStack gap={2}>
+                  <Heading level={3}>Your choices stay private</Heading>
+                  <Text as="p">We record that you voted, but keep that record separate from the choices on your ballot.</Text>
+                </VStack>
+              </Card>
+            ) : (
+              <Text as="p" type="supporting" color="secondary">Your ballot is linked to your voter record.</Text>
+            )}
 
             <footer className="review-actions">
               <Button label="Make changes" variant="secondary" onClick={() => router.push(voter?.ballotSlug ? `/vote/${voter.ballotSlug}` : '/vote')} />

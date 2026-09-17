@@ -83,7 +83,7 @@ export function BallotConfirmation() {
               </dl>
               <Text type="supporting" color="secondary" as="p">
                 {receipt.anonymousVoting === false
-                  ? 'Election administrators can see your choices together with your name and member ID. Your ballot has been recorded.'
+                  ? 'Your ballot has been successfully recorded.'
                   : 'To protect your privacy, we don’t show your choices or create a code that could be linked back to them.'}
               </Text>
               <Button label="Done" href="/" variant="primary" width="100%" />

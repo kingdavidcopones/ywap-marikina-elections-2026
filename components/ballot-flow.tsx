@@ -184,7 +184,7 @@ export function BallotFlow({ballotSlug}: {ballotSlug?: string}) {
               <header className="choice-header">
                 <VStack gap={1}>
                   <Heading level={2} id="choice-heading">Choose a candidate for {current.name}</Heading>
-                  <Text color="secondary">Select one candidate{current.abstainEnabled ? ', or choose not to vote for this position' : ''}. The order is randomized for fairness.</Text>
+                  <Text color="secondary">Select one candidate{current.abstainEnabled ? ', or choose not to vote for this position' : ''}.</Text>
                 </VStack>
                 <Text type="supporting" color="secondary">Choices saved on this device</Text>
               </header>

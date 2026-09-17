@@ -85,9 +85,9 @@ export function positionsForEventGroup(event: ElectionEvent, group: string) {
 }
 
 export function positionMatchesVoter(position: Pick<Position, 'group' | 'votingRule'>, voter: EligibleVoter) {
-  if (position.group !== 'General' && position.group !== voter.ageGroup) return false;
   const rule = position.votingRule;
-  if (!rule || rule.type === 'all') return true;
+  if (!rule || rule.type === 'all') return position.group === 'General' || position.group === voter.ageGroup;
+  if (rule.type !== 'custom') return false;
   if (!rule.filters.length || rule.filters.length > 5) return false;
   let matches = false;
   for (const [index, filter] of rule.filters.entries()) {

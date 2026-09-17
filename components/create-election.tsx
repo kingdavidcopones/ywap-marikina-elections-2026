@@ -237,7 +237,7 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
                     />
                     <CheckboxInput
                       label="Anonymous voting"
-                      description="When enabled, ballots are not linked to voter records. This applies to every position in the election."
+                      description="When enabled, ballots are not linked to voter records."
                       value={anonymousVoting}
                       onChange={setAnonymousVoting}
                     />

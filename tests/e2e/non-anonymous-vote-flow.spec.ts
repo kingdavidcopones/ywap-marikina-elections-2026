@@ -1,6 +1,6 @@
 import {expect, test} from '@playwright/test';
 
-test('voters are told their choices are identifiable before submitting', async ({page}) => {
+test('voters are told their ballot is linked to their voter record before submitting', async ({page}) => {
   const ballotSlug = 'identified-vote-regression';
   const positionId = '11111111-1111-4111-8111-111111111112';
   const nomineeId = '11111111-1111-4111-8111-111111111113';
@@ -23,13 +23,12 @@ test('voters are told their choices are identifiable before submitting', async (
     : {eligiblePositionIds: [positionId]}}));
 
   await page.goto('/vote/review');
-  await expect(page.getByRole('heading', {name: 'Your choices are recorded with your identity'})).toBeVisible();
-  await expect(page.getByText('Election administrators can see your choices together with your name and member ID after you submit.')).toBeVisible();
+  await expect(page.getByText('Your ballot is linked to your voter record.')).toBeVisible();
   await expect(page.getByRole('heading', {name: 'Your choices stay private'})).toHaveCount(0);
 
   await page.getByRole('button', {name: 'Submit ballot'}).first().click();
   await page.getByRole('alertdialog').getByRole('button', {name: 'Submit ballot'}).click();
   await expect(page).toHaveURL('/vote/confirmation');
   await expect(page.getByRole('heading', {name: 'Your ballot is in'})).toBeVisible();
-  await expect(page.getByText('Election administrators can see your choices together with your name and member ID. Your ballot has been recorded.')).toBeVisible();
+  await expect(page.getByText('Your ballot has been successfully recorded.')).toBeVisible();
 });

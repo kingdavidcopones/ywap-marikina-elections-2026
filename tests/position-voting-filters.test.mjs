@@ -4,7 +4,7 @@ import {positionMatchesVoter} from '../lib/election-data.ts';
 
 const voter = {
   memberId: 'YWAP-1', name: 'Test Voter', ageGroup: 'Young Adults',
-  attributes: {department: 'North District', chapter: 'Marikina', committee: ''},
+  attributes: {department: 'North District', chapter: 'Marikina', committee: '', age_group: 'Young Adults'},
 };
 
 const position = {
@@ -37,4 +37,25 @@ test('legacy group scope and invalid custom rules remain restrictive', () => {
   assert.equal(positionMatchesVoter({...position, group: 'Teens'}, voter), false);
   assert.equal(positionMatchesVoter({...position, votingRule: {type: 'custom', filters: []}}, voter), false);
   assert.equal(positionMatchesVoter({...position, votingRule: {type: 'custom', filters: Array(6).fill({column: 'chapter', condition: 'equals', value: 'Marikina'})}}, voter), false);
+});
+
+test('a custom filter overrides the position age-group tag', () => {
+  const teensVoter = {...voter, ageGroup: 'Teens', attributes: {...voter.attributes, age_group: 'Teens'}};
+  const youngPeoplePosition = {
+    ...position, group: 'Young People',
+    votingRule: {type: 'custom', filters: [{column: 'age_group', condition: 'equals', value: 'Teens'}]},
+  };
+  assert.equal(positionMatchesVoter(youngPeoplePosition, teensVoter), true);
+  assert.equal(positionMatchesVoter(youngPeoplePosition, voter), false);
+  assert.equal(positionMatchesVoter({...youngPeoplePosition, votingRule: {type: 'all', filters: []}}, teensVoter), false);
+});
+
+test('a Young People OR Young Adults filter hides the position from Teens', () => {
+  const rule = {type: 'custom', filters: [
+    {column: 'age_group', condition: 'equals', value: 'Young People'},
+    {column: 'age_group', condition: 'equals', value: 'Young Adults', join: 'or'},
+  ]};
+  const filteredPosition = {...position, group: 'Teens', votingRule: rule};
+  assert.equal(positionMatchesVoter(filteredPosition, voter), true);
+  assert.equal(positionMatchesVoter(filteredPosition, {...voter, ageGroup: 'Teens', attributes: {...voter.attributes, age_group: 'Teens'}}), false);
 });

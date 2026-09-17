@@ -149,6 +149,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
   const [votingRule, setVotingRule] = useState<VotingRule>({type: 'all', filters: []});
   const [abstainEnabled, setAbstainEnabled] = useState(true);
   const [isSavingPosition, setIsSavingPosition] = useState(false);
+  const [isAddingCandidate, setIsAddingCandidate] = useState(false);
   const [selectedVoter, setSelectedVoter] = useState<VoterItem | null>(null);
   const [candidateImage, setCandidateImage] = useState<File | null>(null);
   const [voterUploadStatus, setVoterUploadStatus] = useState<UploadStatus>();
@@ -172,6 +173,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
   const [deletingCandidate, setDeletingCandidate] = useState<CandidateTarget | null>(null);
   const [candidateVoter, setCandidateVoter] = useState<VoterItem | null>(null);
   const [candidateEditImage, setCandidateEditImage] = useState<File | null>(null);
+  const [isUpdatingCandidate, setIsUpdatingCandidate] = useState(false);
   const addVotersInputRef = useRef<HTMLInputElement>(null);
   const replaceVotersInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
@@ -399,7 +401,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
 
   async function updateCandidate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!election || !editingCandidate || !candidateVoter) return;
+    if (!election || !editingCandidate || !candidateVoter || isUpdatingCandidate) return;
     const voter = candidateVoter.auxiliaryData.voter;
     const position = election.positions.find((item) => item.id === editingCandidate.positionId);
     const isDuplicate = position?.nominees.some((nominee) => (
@@ -409,28 +411,30 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       toast({body: `${voter.name} is already a candidate for ${position?.name}.`, type: 'error', uniqueID: 'candidate-update-duplicate'});
       return;
     }
-    let imageUrl: string | undefined;
+    setIsUpdatingCandidate(true);
     try {
-      imageUrl = candidateEditImage ? await uploadCandidateImage(editingCandidate.nomineeId, candidateEditImage) : undefined;
+      const imageUrl = candidateEditImage ? await uploadCandidateImage(editingCandidate.nomineeId, candidateEditImage) : undefined;
+      const updatedPositions = election.positions.map((position) => position.id === editingCandidate.positionId ? {
+        ...position,
+        nominees: position.nominees.map((nominee) => nominee.id === editingCandidate.nomineeId ? {
+          ...nominee,
+          name: voter.name,
+          profile: voter.ageGroup,
+          ageGroup: voter.ageGroup,
+          imageUrl: imageUrl ?? nominee.imageUrl,
+        } : nominee),
+      } : position);
+      const saved = await saveElection({...election, positions: updatedPositions});
+      setElection(saved);
+      setEditingCandidate(null);
+      setCandidateVoter(null);
+      setCandidateEditImage(null);
+      toast({body: `${voter.name}’s candidate details were saved.`, uniqueID: 'candidate-updated'});
     } catch (error) {
-      toast({body: error instanceof Error ? error.message : 'The candidate photo could not be uploaded.', type: 'error', uniqueID: 'candidate-photo-upload-error'});
-      return;
+      toast({body: error instanceof Error ? error.message : 'The candidate could not be saved.', type: 'error', uniqueID: 'candidate-update-error'});
+    } finally {
+      setIsUpdatingCandidate(false);
     }
-    const updatedPositions = election.positions.map((position) => position.id === editingCandidate.positionId ? {
-      ...position,
-      nominees: position.nominees.map((nominee) => nominee.id === editingCandidate.nomineeId ? {
-        ...nominee,
-        name: voter.name,
-        profile: voter.ageGroup,
-        ageGroup: voter.ageGroup,
-        imageUrl: imageUrl ?? nominee.imageUrl,
-      } : nominee),
-    } : position);
-    persist({...election, positions: updatedPositions});
-    setEditingCandidate(null);
-    setCandidateVoter(null);
-    setCandidateEditImage(null);
-    toast({body: `${voter.name}’s candidate details were saved.`, uniqueID: 'candidate-updated'});
   }
 
   function deleteCandidate() {
@@ -553,35 +557,37 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
 
   async function addCandidate(event: FormEvent<HTMLFormElement>, position: Position) {
     event.preventDefault();
-    if (!election || !selectedVoter) return;
+    if (!election || !selectedVoter || isAddingCandidate) return;
     const voter = selectedVoter.auxiliaryData.voter;
     if (position.nominees.some((nominee) => nominee.name === voter.name)) {
       toast({body: `${voter.name} is already a candidate for ${position.name}.`, type: 'error', uniqueID: 'candidate-add-duplicate'});
       return;
     }
-    const nomineeId = crypto.randomUUID();
-    let imageUrl: string | undefined;
+    setIsAddingCandidate(true);
     try {
-      imageUrl = candidateImage ? await uploadCandidateImage(nomineeId, candidateImage) : undefined;
+      const nomineeId = crypto.randomUUID();
+      const imageUrl = candidateImage ? await uploadCandidateImage(nomineeId, candidateImage) : undefined;
+      const updatedPositions = election.positions.map((item) => item.id === position.id ? {
+        ...item,
+        nominees: [...item.nominees, {
+          id: nomineeId,
+          name: voter.name,
+          profile: voter.ageGroup,
+          ageGroup: voter.ageGroup,
+          imageUrl,
+        }],
+      } : item);
+      const saved = await saveElection({...election, positions: updatedPositions});
+      setElection(saved);
+      setSelectedVoter(null);
+      setCandidateImage(null);
+      setCandidatePositionId(null);
+      toast({body: `${voter.name} was added as a candidate for ${position.name}.`, uniqueID: 'candidate-added'});
     } catch (error) {
-      toast({body: error instanceof Error ? error.message : 'The candidate photo could not be uploaded.', type: 'error', uniqueID: 'candidate-photo-upload-error'});
-      return;
+      toast({body: error instanceof Error ? error.message : 'The candidate could not be saved.', type: 'error', uniqueID: 'candidate-add-error'});
+    } finally {
+      setIsAddingCandidate(false);
     }
-    const updatedPositions = election.positions.map((item) => item.id === position.id ? {
-      ...item,
-      nominees: [...item.nominees, {
-        id: nomineeId,
-        name: voter.name,
-        profile: voter.ageGroup,
-        ageGroup: voter.ageGroup,
-        imageUrl,
-      }],
-    } : item);
-    persist({...election, positions: updatedPositions});
-    setSelectedVoter(null);
-    setCandidateImage(null);
-    setCandidatePositionId(null);
-    toast({body: `${voter.name} was added as a candidate for ${position.name}.`, uniqueID: 'candidate-added'});
   }
 
   async function uploadVoterFile(file: File | null, mode: VoterUploadMode) {
@@ -854,8 +860,8 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                         </section>
                         <FileInput label="Candidate photo" description="Upload a PNG, JPG, or SVG up to 2 MB." value={candidateImage} onChange={(file) => setCandidateImage(file as File | null)} accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" maxSize={2 * 1024 * 1024} width="100%" />
                         <HStack gap={3} justify="end">
-                          <Button label="Cancel adding candidate" variant="ghost" onClick={() => setCandidatePositionId(null)}>Cancel</Button>
-                          <Button type="submit" label="Save candidate" variant="primary" isDisabled={!selectedVoter} />
+                          <Button label="Cancel adding candidate" variant="ghost" onClick={() => setCandidatePositionId(null)} isDisabled={isAddingCandidate}>Cancel</Button>
+                          <Button type="submit" label="Save candidate" variant="primary" isDisabled={!selectedVoter || isAddingCandidate} isLoading={isAddingCandidate} />
                         </HStack>
                       </VStack>
                     </form>
@@ -1375,7 +1381,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                     <TextInput label="Voting link ending" description="This appears after /vote/ in the link shared with voters." value={eventBallotSlug} onChange={(value) => { setEventBallotSlug(value); setEventEditError(null); }} isRequired width="100%" />
                     <CheckboxInput
                       label="Anonymous voting"
-                      description="When enabled, ballots are not linked to voter records. This applies to every position in the election."
+                      description="When enabled, ballots are not linked to voter records."
                       value={eventAnonymousVoting}
                       onChange={setEventAnonymousVoting}
                       isDisabled={election.status !== 'Draft' || election.ballotsSubmitted > 0}
@@ -1397,10 +1403,10 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
         />
       </Dialog>
 
-      <Dialog isOpen={editingCandidate !== null} onOpenChange={(open) => { if (!open) { setEditingCandidate(null); setCandidateVoter(null); } }} purpose="form" width={560}>
+      <Dialog isOpen={editingCandidate !== null} onOpenChange={(open) => { if (!open && !isUpdatingCandidate) { setEditingCandidate(null); setCandidateVoter(null); } }} purpose="form" width={560}>
         <Layout
           height="auto"
-          header={<DialogHeader title="Edit candidate" subtitle="Candidate names come from this election’s eligible voter list." onOpenChange={(open) => { if (!open) { setEditingCandidate(null); setCandidateVoter(null); } }} />}
+          header={<DialogHeader title="Edit candidate" subtitle="Candidate names come from this election’s eligible voter list." onOpenChange={(open) => { if (!open && !isUpdatingCandidate) { setEditingCandidate(null); setCandidateVoter(null); } }} />}
           content={
             <LayoutContent>
               <form id="edit-candidate-form" onSubmit={(event) => void updateCandidate(event)}>
@@ -1434,8 +1440,8 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
           footer={
             <LayoutFooter>
               <HStack gap={3} justify="end">
-                <Button label="Cancel editing candidate" variant="ghost" onClick={() => { setEditingCandidate(null); setCandidateVoter(null); }}>Cancel</Button>
-                <Button type="submit" form="edit-candidate-form" label="Save candidate details" variant="primary" isDisabled={!candidateVoter}>Save changes</Button>
+                <Button label="Cancel editing candidate" variant="ghost" onClick={() => { setEditingCandidate(null); setCandidateVoter(null); }} isDisabled={isUpdatingCandidate}>Cancel</Button>
+                <Button type="submit" form="edit-candidate-form" label="Save candidate details" variant="primary" isDisabled={!candidateVoter || isUpdatingCandidate} isLoading={isUpdatingCandidate}>Save changes</Button>
               </HStack>
             </LayoutFooter>
           }
