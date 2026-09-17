@@ -24,7 +24,7 @@ ADMIN_PASSWORD=use-a-strong-password
 SESSION_SECRET=use-a-long-random-secret
 ```
 
-Apply the SQL files in `supabase/migrations/` in filename order to the Supabase project, including `202609170003_nominations.sql` for the nomination feature. Do not expose `SUPABASE_SERVICE_ROLE_KEY` as a `NEXT_PUBLIC_` variable.
+Apply the SQL files in `supabase/migrations/` in filename order to the Supabase project, including `202609170003_nominations.sql` and `202609180001_nomination_age_groups.sql` for the nomination feature. Apply the new age-group migration before deploying the updated nomination form. Do not expose `SUPABASE_SERVICE_ROLE_KEY` as a `NEXT_PUBLIC_` variable.
 
 ## Run and verify
 
@@ -33,13 +33,14 @@ npm install
 npx playwright install chromium
 npm run typecheck
 npm run build
+node --test tests/nomination-csv.test.mjs tests/nomination-age-groups.test.mjs
 npm run test:e2e
 npx astryx doctor
 ```
 
 The end-to-end test imports all 45 rows from `tests/fixtures/mock-voters.csv`, creates a temporary election, verifies a voter, submits a ballot, checks duplicate prevention, validates results and the audit log, and removes the temporary election.
 
-The nomination live test is opt-in because it writes synthetic records to the configured Supabase project. It archives its test nomination when finished:
+The nomination live test is opt-in because it writes synthetic records to the configured Supabase project. It deletes its test nomination when finished:
 
 ```bash
 NOMINATION_LIVE_TEST=1 npx playwright test tests/e2e/nomination-live.spec.ts

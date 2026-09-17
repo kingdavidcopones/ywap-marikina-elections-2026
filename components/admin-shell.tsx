@@ -5,8 +5,7 @@ import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import {usePathname} from 'next/navigation';
 import {CalendarCheckIcon} from '@phosphor-icons/react/CalendarCheck';
-import {CaretDoubleLeftIcon} from '@phosphor-icons/react/CaretDoubleLeft';
-import {CaretDoubleRightIcon} from '@phosphor-icons/react/CaretDoubleRight';
+import {SidebarSimpleIcon} from '@phosphor-icons/react/SidebarSimple';
 import {ChartBarIcon} from '@phosphor-icons/react/ChartBar';
 import {ClipboardTextIcon} from '@phosphor-icons/react/ClipboardText';
 import {PlusIcon} from '@phosphor-icons/react/Plus';
@@ -228,7 +227,7 @@ export function AdminShell({children}: {children: React.ReactNode}) {
                   />
                 ) : null}
                 <SideNavCollapseButton collapsible={collapsible} size="sm">
-                  {isNavCollapsed ? <CaretDoubleRightIcon /> : <CaretDoubleLeftIcon />}
+                  <SidebarSimpleIcon />
                 </SideNavCollapseButton>
               </HStack>
             }

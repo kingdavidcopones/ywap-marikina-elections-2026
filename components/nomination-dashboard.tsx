@@ -40,9 +40,8 @@ export function NominationDashboard() {
     void fetchNominations().then((items) => {setNominations(items); setLoadError('');}).catch((cause) => {
       const message = cause instanceof Error ? cause.message : 'Nominations could not be loaded.';
       setLoadError(message);
-      toast({body: message, type: 'error'});
     }).finally(() => setLoading(false));
-  }, [toast, reloadKey]);
+  }, [reloadKey]);
 
   async function create(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,7 +53,7 @@ export function NominationDashboard() {
       setCreateOpen(false);
       toast({body: 'Nomination draft created.'});
       router.push(`/admin/nominations/${nomination.id}`);
-    } catch (cause) { const message = cause instanceof Error ? cause.message : 'Could not create nomination.'; setError(message); toast({body: message, type: 'error'}); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not create nomination.'); }
     finally { setSaving(false); }
   }
 

@@ -1,21 +1,26 @@
 'use client';
 
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
+import {useRouter} from 'next/navigation';
 import {ArrowLeftIcon} from '@phosphor-icons/react/ArrowLeft';
 import {ArrowUpRightIcon} from '@phosphor-icons/react/ArrowUpRight';
 import {CopySimpleIcon} from '@phosphor-icons/react/CopySimple';
+import {DownloadSimpleIcon} from '@phosphor-icons/react/DownloadSimple';
 import {PlusIcon} from '@phosphor-icons/react/Plus';
+import {ArchiveIcon} from '@phosphor-icons/react/Archive';
+import {PencilSimpleIcon} from '@phosphor-icons/react/PencilSimple';
 import {TrashIcon} from '@phosphor-icons/react/Trash';
+import {UploadSimpleIcon} from '@phosphor-icons/react/UploadSimple';
 import {AlertDialog} from '@astryxdesign/core/AlertDialog';
 import {Banner} from '@astryxdesign/core/Banner';
 import {Button} from '@astryxdesign/core/Button';
 import {Card} from '@astryxdesign/core/Card';
 import {CheckboxInput} from '@astryxdesign/core/CheckboxInput';
+import {CheckboxList, CheckboxListItem} from '@astryxdesign/core/CheckboxList';
 import {DateTimeInput, type ISODateTimeString} from '@astryxdesign/core/DateTimeInput';
 import {Dialog, DialogHeader} from '@astryxdesign/core/Dialog';
 import {DropdownMenu} from '@astryxdesign/core/DropdownMenu';
 import {EmptyState} from '@astryxdesign/core/EmptyState';
-import {FileInput} from '@astryxdesign/core/FileInput';
 import {FormLayout} from '@astryxdesign/core/FormLayout';
 import {Heading} from '@astryxdesign/core/Heading';
 import {HStack, Layout, LayoutContent, LayoutFooter, VStack} from '@astryxdesign/core/Layout';
@@ -28,12 +33,12 @@ import {Text} from '@astryxdesign/core/Text';
 import {TextArea} from '@astryxdesign/core/TextArea';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {useToast} from '@astryxdesign/core/Toast';
-import {fetchAdminNomination, fetchNominationNominees, fetchNominationYouthRecords, updateAdminNomination} from '@/lib/api';
+import {fetchAdminNomination, fetchNominationNominees, fetchNominationYouthRecords, removeNomination, updateAdminNomination} from '@/lib/api';
 import {ElectionEditorSkeleton} from '@/components/loading-states';
-import {parseVoters} from '@/lib/csv';
-import type {Nomination, NominationEntry, NominationPosition, NominationStatus, YouthRecord} from '@/lib/nomination-data';
+import {normalizeCsvBirthDate, parseVoters} from '@/lib/csv';
+import {NOMINATION_AGE_GROUPS, isNominationAgeGroup, type Nomination, type NominationAgeGroup, type NominationEntry, type NominationPosition, type NominationStatus, type YouthRecord} from '@/lib/nomination-data';
 
-interface PositionRow extends Record<string, unknown> { id: string; name: string; about: string; responsibilities: string; }
+interface PositionRow extends Record<string, unknown> { id: string; name: string; audience: string; about: string; responsibilities: string; }
 interface NomineeRow extends Record<string, unknown> { id: string; nomineeName: string; positionName: string; submittedAt: string; }
 interface YouthRow extends Record<string, unknown> { id: string; memberId: string; name: string; ageGroup: string; importedAt: string; }
 type UploadRecord = Omit<YouthRecord, 'id' | 'name' | 'importedAt'>;
@@ -65,15 +70,18 @@ function parseYouthCsv(csv: string): UploadRecord[] {
     seen.add(memberId.toUpperCase());
     const age = Number(record.age);
     if (!Number.isInteger(age) || age < 0 || age > 120) throw new Error(`Row ${index + 1}: invalid age.`);
-    const birthDate = record.birth_date.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || Number.isNaN(Date.parse(birthDate)) || new Date(`${birthDate}T00:00:00Z`).toISOString().slice(0, 10) !== birthDate) throw new Error(`Row ${index + 1}: invalid birth date. Use YYYY-MM-DD.`);
+    const birthDate = normalizeCsvBirthDate(record.birth_date);
+    if (!birthDate) throw new Error(`Row ${index + 1}: invalid birth date. Use a date such as 2006-01-31, 1/31/2006, or 31/1/2006.`);
     return {memberId, firstName: record.first_name.trim(), lastName: record.last_name.trim(), ageGroup: record.age_group.trim(),
       gender: record.gender.trim(), age, birthDate, attributes: record};
   });
 }
 
 export function NominationEditor({id}: {id: string}) {
+  const router = useRouter();
   const toast = useToast();
+  const addYouthInputRef = useRef<HTMLInputElement>(null);
+  const replaceYouthInputRef = useRef<HTMLInputElement>(null);
   const [nomination, setNomination] = useState<Nomination | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -87,15 +95,19 @@ export function NominationEditor({id}: {id: string}) {
   const [positionOpen, setPositionOpen] = useState(false);
   const [editingPosition, setEditingPosition] = useState<NominationPosition | null>(null);
   const [positionName, setPositionName] = useState('');
+  const [eligibleAgeGroups, setEligibleAgeGroups] = useState<NominationAgeGroup[]>([]);
   const [showRoleDetails, setShowRoleDetails] = useState(false);
   const [aboutRole, setAboutRole] = useState('');
   const [responsibilities, setResponsibilities] = useState('');
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleStep, setScheduleStep] = useState<'edit' | 'confirm'>('edit');
+  const [publishOpen, setPublishOpen] = useState(false);
   const [opensAt, setOpensAt] = useState<ISODateTimeString>();
   const [closesAt, setClosesAt] = useState<ISODateTimeString>();
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadRecords, setUploadRecords] = useState<UploadRecord[]>([]);
   const [uploadError, setUploadError] = useState('');
+  const [replaceYouthOpen, setReplaceYouthOpen] = useState(false);
+  const [pendingStatusAction, setPendingStatusAction] = useState<'unpublish' | 'archive' | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null);
   const [nomineeEntries, setNomineeEntries] = useState<NominationEntry[]>([]);
   const [youthRecords, setYouthRecords] = useState<YouthRecord[]>([]);
@@ -131,7 +143,6 @@ export function NominationEditor({id}: {id: string}) {
   async function mutate(action: Record<string, unknown>) {
     if (!nomination) return false;
     setBusy(true);
-    setError('');
     try {
       const updated = await updateAdminNomination(nomination.id, action);
       setNomination(updated);
@@ -141,7 +152,6 @@ export function NominationEditor({id}: {id: string}) {
       return true;
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'The change could not be saved.';
-      setError(message);
       toast({body: message, type: 'error'});
       return false;
     } finally { setBusy(false); }
@@ -154,6 +164,7 @@ export function NominationEditor({id}: {id: string}) {
   function editPosition(position?: NominationPosition) {
     setEditingPosition(position ?? null);
     setPositionName(position?.name ?? '');
+    setEligibleAgeGroups(position?.eligibleAgeGroups ?? []);
     setShowRoleDetails(position?.showRoleDetails ?? false);
     setAboutRole(position?.aboutRole ?? '');
     setResponsibilities(position?.responsibilities.join('\n') ?? '');
@@ -168,34 +179,56 @@ export function NominationEditor({id}: {id: string}) {
     if (aboutRole.length > 2000 || responsibilities.split('\n').length > 20 || responsibilities.split('\n').some((line) => line.length > 500)) {setPositionError('Keep role details under 2,000 characters and up to 20 responsibilities of 500 characters each.'); return;}
     setPositionError('');
     if (await mutate({type: 'position', positionId: editingPosition?.id, name: positionName,
-      showRoleDetails, aboutRole, responsibilities: responsibilities.split('\n')})) setPositionOpen(false);
+      eligibleAgeGroups, showRoleDetails, aboutRole, responsibilities: responsibilities.split('\n')})) setPositionOpen(false);
   }
   async function setStatus(status: NominationStatus, schedule?: {opensAt: string; closesAt: string}) {
     if (status === 'Scheduled' && (!schedule?.opensAt || !schedule?.closesAt || Date.parse(schedule.opensAt) <= Date.now() || Date.parse(schedule.closesAt) <= Date.parse(schedule.opensAt))) {setScheduleError('Choose a future opening time and a later closing time.'); return;}
     setScheduleError('');
-    if (await mutate({type: 'status', status, ...schedule})) setScheduleOpen(false);
+    if (await mutate({type: 'status', status, ...schedule})) {setScheduleOpen(false); setScheduleStep('edit'); setPublishOpen(false); setPendingStatusAction(null);}
+  }
+  function reviewSchedule(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const open = toIso(opensAt);
+    const close = toIso(closesAt);
+    if (!open || !close || Date.parse(open) <= Date.now() || Date.parse(close) <= Date.parse(open)) {
+      setScheduleError('Choose a future opening time and a later closing time.');
+      return;
+    }
+    setScheduleError('');
+    setScheduleStep('confirm');
   }
   async function copyLink() {
     if (!nomination) return;
     try { await navigator.clipboard.writeText(`${window.location.origin}/nominate/${nomination.slug}`); toast({body: 'Nomination link copied.'}); }
     catch { toast({body: 'Could not copy the link.', type: 'error'}); }
   }
-  async function selectFile(file: File | null) {
-    setUploadFile(file); setUploadRecords([]); setUploadError('');
+  async function uploadYouthFile(file: File | null, mode: 'add' | 'replace') {
+    setUploadError('');
     if (!file) return;
-    try { setUploadRecords(parseYouthCsv(await file.text())); }
+    if (file.size > 2 * 1024 * 1024) {setUploadError('Choose a CSV smaller than 2 MB.'); return;}
+    try {
+      const records = parseYouthCsv(await file.text());
+      if (await mutate({type: 'records', mode, records})) setYouthPage(1);
+    }
     catch (cause) { setUploadError(cause instanceof Error ? cause.message : 'The CSV could not be read.'); }
   }
-  async function upload(mode: 'add' | 'replace') {
-    if (!uploadRecords.length) return;
-    if (await mutate({type: 'records', mode, records: uploadRecords})) {
-      setUploadFile(null); setUploadRecords([]);
-    }
+  async function deleteNomination() {
+    if (!nomination) return;
+    setBusy(true);
+    try {
+      await removeNomination(nomination.id);
+      setDeleteOpen(false);
+      toast({body: `${nomination.name} was deleted.`});
+      router.push('/admin/nominations');
+    } catch (cause) {
+      toast({body: cause instanceof Error ? cause.message : 'The nomination could not be deleted.', type: 'error'});
+    } finally {setBusy(false);}
   }
 
   if (loading) return <ElectionEditorSkeleton />;
   if (!nomination) return <main className="admin-page"><Card padding={6}><Heading level={1}>Nomination unavailable</Heading><Text>{error || 'It may have been removed.'}</Text></Card></main>;
   const positionRows: PositionRow[] = nomination.positions.map((position) => ({id: position.id, name: position.name,
+    audience: position.eligibleAgeGroups.length ? NOMINATION_AGE_GROUPS.filter((group) => position.eligibleAgeGroups.includes(group.value)).map((group) => group.label).join(', ') : 'All age groups',
     about: position.showRoleDetails ? position.aboutRole || 'Shown, no description' : 'Hidden',
     responsibilities: position.showRoleDetails ? position.responsibilities.join(' · ') || 'None added' : 'Hidden'}));
   const nomineeRows: NomineeRow[] = nomineeEntries.map((entry: NominationEntry) => ({id: entry.id, nomineeName: entry.nomineeName,
@@ -217,18 +250,23 @@ export function NominationEditor({id}: {id: string}) {
       </VStack>
       <HStack gap={3} wrap="wrap" justify="end">
         <Button label="Copy nomination link" variant="secondary" icon={<CopySimpleIcon />} onClick={() => void copyLink()} />
-        <Button label="Edit details" variant="secondary" onClick={editDetails}>Edit details</Button>
-        <Button label={canEdit ? 'Preview nomination form' : 'Open nomination form'} href={`/nominate/${nomination.slug}`} target="_blank" rel="noopener noreferrer" variant="secondary" endContent={<ArrowUpRightIcon />}>{canEdit ? 'Preview form' : 'Form'}</Button>
+        <DropdownMenu button={{label: 'Edit details', variant: 'secondary'}} items={[
+          {label: 'Edit details', icon: PencilSimpleIcon, onClick: editDetails},
+          {type: 'divider'},
+          ...(nomination.status !== 'Archived' ? [{label: 'Archive', icon: ArchiveIcon, onClick: () => setPendingStatusAction('archive')} as const, {type: 'divider'} as const] : []),
+          {label: 'Delete nomination', icon: TrashIcon, variant: 'destructive', isDisabled: !['Draft', 'Archived'].includes(nomination.status),
+            description: !['Draft', 'Archived'].includes(nomination.status) ? 'Unpublish before deleting.' : 'Permanently remove this nomination and its records.',
+            onClick: () => setDeleteOpen(true)},
+        ]} presentation="adaptive" alignment="end" />
+        <Button label="Open nomination link" href={`/nominate/${nomination.slug}`} target="_blank" rel="noopener noreferrer" variant="secondary" endContent={<ArrowUpRightIcon />}>Form link</Button>
         {canEdit ? <DropdownMenu button={{label: 'Publish', variant: 'primary'}} items={[
-          {label: 'Publish now', onClick: () => void setStatus('Published')},
-          {label: 'Schedule later', onClick: () => {setOpensAt(manilaInput(nomination.opensAt)); setClosesAt(manilaInput(nomination.closesAt)); setScheduleOpen(true);}},
+          {label: 'Publish now', onClick: () => setPublishOpen(true)},
+          {label: 'Schedule later', onClick: () => {setOpensAt(manilaInput(nomination.opensAt)); setClosesAt(manilaInput(nomination.closesAt)); setScheduleError(''); setScheduleStep('edit'); setScheduleOpen(true);}},
         ]} presentation="adaptive" alignment="end" /> : null}
-        {nomination.status === 'Published' || nomination.status === 'Scheduled' ? <Button label="Unpublish nomination" variant="destructive" onClick={() => void setStatus('Draft')}>Unpublish</Button> : null}
-        {nomination.status !== 'Archived' ? <Button label="Archive nomination" variant="ghost" onClick={() => void setStatus('Archived')}>Archive</Button> : null}
+        {nomination.status === 'Published' || nomination.status === 'Scheduled' ? <Button label="Unpublish nomination" variant="destructive" onClick={() => setPendingStatusAction('unpublish')}>Unpublish</Button> : null}
         {nomination.status === 'Archived' ? <Button label="Restore to draft" variant="primary" onClick={() => void setStatus('Draft')}>Restore to draft</Button> : null}
       </HStack>
     </header>
-    {error ? <Banner status="error" title="Change not saved" description={error} container="section" /> : null}
     <VStack gap={6}>
       <section className="event-overview" aria-label="Nomination summary">
         <article><Text type="supporting" color="secondary">Positions</Text><Text type="display-3">{nomination.positions.length}</Text></article>
@@ -243,11 +281,12 @@ export function NominationEditor({id}: {id: string}) {
       </TabList>
     </VStack>
     {tab === 'positions' ? <section id="nomination-positions-panel" role="tabpanel" className="dashboard-section" aria-label="Nomination positions">
-      <header className="section-heading-row"><VStack gap={1}><Heading level={2}>Positions</Heading><Text color="secondary">Choose which role details appear on the public form.</Text></VStack>
+      <header className="section-heading-row"><VStack gap={1}><Heading level={2}>Positions</Heading><Text color="secondary">Set who can nominate for each position and which role details appear on the form.</Text></VStack>
         <Button label="Create position" icon={<PlusIcon />} variant="primary" onClick={() => editPosition()} isDisabled={!canEdit} /></header>
       {!canEdit ? <Banner status="warning" title="Positions are locked" description="Unpublish or restore this nomination to edit its positions." container="section" /> : null}
       {positionRows.length ? <section className="table-surface" aria-label="Position list"><Table<PositionRow> data={positionRows} idKey="id" columns={[
         {key: 'name', header: 'Position', width: proportional(2)},
+        {key: 'audience', header: 'Who can nominate', width: proportional(2)},
         {key: 'about', header: 'About the role', width: proportional(3)},
         {key: 'responsibilities', header: 'Responsibilities', width: proportional(3)},
         {key: 'id', header: 'Actions', width: pixel(190), renderCell: (row) => <HStack gap={2}><Button label={`Edit ${row.name}`} size="sm" variant="ghost" isDisabled={!canEdit} onClick={() => editPosition(nomination.positions.find((item) => item.id === row.id))}>Edit</Button><Button label={`Delete ${row.name}`} size="sm" variant="ghost" icon={<TrashIcon />} isDisabled={!canEdit} onClick={() => setRemoveTarget({type: 'delete-position', id: row.id, name: row.name})}>Remove</Button></HStack>},
@@ -264,15 +303,35 @@ export function NominationEditor({id}: {id: string}) {
       ]} />{nomineeTotal > PAGE_SIZE ? <footer className="table-pagination"><Pagination page={currentNomineesPage} onChange={setNomineesPage} totalItems={nomineeTotal} pageSize={PAGE_SIZE} variant="pages" size="sm" label="Nominee pages" /></footer> : null}</section> : !collectionError ? <Card padding={6}><EmptyState title="No nominees yet" description="Submitted nominations will appear here." /></Card> : null}
     </section> : null}
     {tab === 'youth' ? <section id="nomination-youth-panel" role="tabpanel" className="dashboard-section" aria-label="Youth Records">
-      <header className="section-heading-row"><VStack gap={1}><Heading level={2}>Youth Records</Heading><Text color="secondary">Upload a CSV for name suggestions on this nomination form.</Text></VStack></header>
+      <header className="section-heading-row">
+        <VStack gap={1}>
+          <Heading level={2}>Youth Records</Heading>
+          <Text color="secondary">Upload a CSV for name suggestions. Replace the template’s example row before uploading.</Text>
+        </VStack>
+        <HStack gap={2} align="center" wrap="wrap">
+          <Button label="Download CSV Template" href="/api/csv-template/youth-records" variant="secondary" icon={<DownloadSimpleIcon />} />
+          {nomination.youthRecordCount ? (
+            <DropdownMenu
+              button={{label: 'Upload Youth Records', variant: 'secondary', icon: <UploadSimpleIcon />, isDisabled: !canEdit || busy}}
+              items={[
+                {label: 'Add data from CSV', description: 'Keep existing records and add or update matching Member IDs.', onClick: () => addYouthInputRef.current?.click()},
+                {label: 'Replace entire list', description: 'Replace the current Youth Records with this CSV.', variant: 'destructive', onClick: () => setReplaceYouthOpen(true)},
+              ]}
+              presentation="adaptive"
+              alignment="end"
+            />
+          ) : (
+            <Button label="Upload Youth Records" variant="secondary" icon={<UploadSimpleIcon />} onClick={() => addYouthInputRef.current?.click()} isDisabled={!canEdit || busy} />
+          )}
+        </HStack>
+        <input ref={addYouthInputRef} className="sr-only" type="file" accept=".csv,text/csv" aria-label="Add Youth Records from CSV" onChange={(event) => {void uploadYouthFile(event.currentTarget.files?.[0] ?? null, 'add'); event.currentTarget.value = '';}} />
+        <input ref={replaceYouthInputRef} className="sr-only" type="file" accept=".csv,text/csv" aria-label="Replace Youth Records from CSV" onChange={(event) => {void uploadYouthFile(event.currentTarget.files?.[0] ?? null, 'replace'); event.currentTarget.value = '';}} />
+      </header>
       <VStack gap={4}>
         {!canEdit ? <Banner status="warning" title="Youth Record uploads are locked" description="Unpublish or restore this nomination to change its Youth Records." container="section" /> : null}
-        <FileInput label="Upload Youth Records" description="CSV columns: member_id, first_name, last_name, gender, age, birth_date, age_group." value={uploadFile}
-          onChange={(file) => void selectFile(file as File | null)} accept=".csv,text/csv" maxSize={2 * 1024 * 1024} mode="input" width="100%" isDisabled={!canEdit} />
+        <Text type="supporting" color="secondary">CSV columns: member_id, first_name, last_name, gender, age, birth_date, age_group. Dates may use YYYY-MM-DD, month/day/year, or unambiguous day/month/year.</Text>
         {uploadError ? <Banner status="error" title="CSV needs attention" description={uploadError} container="section" /> : null}
-        {uploadRecords.length ? <HStack gap={3} align="center" wrap="wrap"><Text>{uploadRecords.length} records ready</Text>
-          <Button label="Add or update records" variant="primary" onClick={() => void upload('add')} isLoading={busy} />
-          <Button label="Replace all records" variant="secondary" onClick={() => void upload('replace')} isDisabled={busy} /></HStack> : null}
+        {busy ? <Text type="supporting" color="secondary">Uploading Youth Records…</Text> : null}
         {collectionError ? <Banner status="error" title="Youth Records could not be loaded" description={collectionError} container="section" /> : null}
         {collectionLoading ? <Skeleton width="100%" height="var(--spacing-12)" index={0} /> : youthRows.length ? <section className="table-surface" aria-label="Youth Records table"><Table<YouthRow> data={youthRows} idKey="id" rowIndexStart={(currentYouthPage - 1) * PAGE_SIZE + 1} rowCount={youthTotal} columns={[
           {key: 'memberId', header: 'Member ID', width: proportional(1)},
@@ -295,23 +354,41 @@ export function NominationEditor({id}: {id: string}) {
       <Layout defaultHasDividers header={<DialogHeader title={editingPosition ? 'Edit position' : 'Create position'} onOpenChange={setPositionOpen} />}
         content={<LayoutContent><form id="nomination-position-form" onSubmit={(event) => void savePosition(event)}><VStack gap={4}>
           <TextInput label="Position name" value={positionName} onChange={(value) => {setPositionName(value); setPositionError('');}} isRequired width="100%" status={positionError ? {type: 'error', message: positionError} : undefined} />
+          <CheckboxList label="Who can nominate for this position" description="Leave all unchecked to make this position available to every age group." value={eligibleAgeGroups} onChange={(values) => setEligibleAgeGroups(values.filter(isNominationAgeGroup))} hasDividers>
+            {NOMINATION_AGE_GROUPS.map((group) => <CheckboxListItem key={group.value} value={group.value} label={group.label} description={group.ages} />)}
+          </CheckboxList>
           <CheckboxInput label="Display about the role and responsibilities" description="These details will appear on the public nomination form." value={showRoleDetails} onChange={setShowRoleDetails} />
           {showRoleDetails ? <FormLayout direction="vertical" defaultOptionality="optional"><TextArea label="About the role" value={aboutRole} onChange={setAboutRole} width="100%" />
             <TextArea label="Responsibilities" description="Enter one responsibility per line." value={responsibilities} onChange={setResponsibilities} width="100%" /></FormLayout> : null}
         </VStack></form></LayoutContent>}
         footer={<LayoutFooter><HStack gap={3} justify="end"><Button label="Cancel" variant="ghost" onClick={() => setPositionOpen(false)} /><Button label="Save position" type="submit" form="nomination-position-form" variant="primary" isLoading={busy} /></HStack></LayoutFooter>} />
     </Dialog>
+    <Dialog isOpen={publishOpen} onOpenChange={setPublishOpen} purpose="form" width={480}>
+      <Layout defaultHasDividers header={<DialogHeader title="Publish this nomination now?" onOpenChange={setPublishOpen} />}
+        content={<LayoutContent><Text>Publishing will open the nomination form immediately and allow responses.</Text></LayoutContent>}
+        footer={<LayoutFooter><HStack gap={3} justify="end"><Button label="Cancel" variant="ghost" onClick={() => setPublishOpen(false)} /><Button label="Confirm publication" variant="primary" isLoading={busy} onClick={() => void setStatus('Published')}>Publish now</Button></HStack></LayoutFooter>} />
+    </Dialog>
     <Dialog isOpen={scheduleOpen} onOpenChange={setScheduleOpen} purpose="form" width={560}>
-      <Layout defaultHasDividers header={<DialogHeader title="Schedule nomination" subtitle="Times are in Philippine time." onOpenChange={setScheduleOpen} />}
-        content={<LayoutContent><form id="nomination-schedule-form" onSubmit={(event) => {event.preventDefault(); void setStatus('Scheduled', {opensAt: toIso(opensAt), closesAt: toIso(closesAt)});}}><FormLayout direction="vertical" defaultOptionality="required">
+      <Layout defaultHasDividers header={<DialogHeader title={scheduleStep === 'edit' ? 'Schedule nomination' : 'Confirm the nomination schedule'} subtitle={scheduleStep === 'edit' ? 'Times are in Philippine time.' : 'Check the opening and closing times before scheduling.'} onOpenChange={setScheduleOpen} />}
+        content={<LayoutContent>{scheduleStep === 'edit' ? <form id="nomination-schedule-form" onSubmit={reviewSchedule}><FormLayout direction="vertical" defaultOptionality="required">
           <DateTimeInput label="Opens at" value={opensAt} onChange={(value) => {setOpensAt(value); setScheduleError('');}} isRequired width="100%" status={scheduleError ? {type: 'error', message: scheduleError} : undefined} />
           <DateTimeInput label="Closes at" value={closesAt} onChange={(value) => {setClosesAt(value); setScheduleError('');}} isRequired width="100%" />
-          {scheduleError ? <Banner status="error" title="Schedule needs attention" description={scheduleError} container="section" /> : null}
-        </FormLayout></form></LayoutContent>}
-        footer={<LayoutFooter><HStack gap={3} justify="end"><Button label="Cancel" variant="ghost" onClick={() => setScheduleOpen(false)} /><Button label="Schedule" type="submit" form="nomination-schedule-form" variant="primary" isLoading={busy} /></HStack></LayoutFooter>} />
+        </FormLayout></form> : <VStack gap={3}><Text>This nomination will open and close automatically at these times:</Text><Text>Opens: {formatDate(toIso(opensAt))}</Text><Text>Closes: {formatDate(toIso(closesAt))}</Text></VStack>}</LayoutContent>}
+        footer={<LayoutFooter><HStack gap={3} justify="end">{scheduleStep === 'edit' ? <><Button label="Cancel" variant="ghost" onClick={() => setScheduleOpen(false)} /><Button label="Review nomination schedule" type="submit" form="nomination-schedule-form" variant="primary">Continue</Button></> : <><Button label="Change schedule" variant="secondary" onClick={() => setScheduleStep('edit')}>Back</Button><Button label="Confirm nomination schedule" variant="primary" isLoading={busy} onClick={() => void setStatus('Scheduled', {opensAt: toIso(opensAt), closesAt: toIso(closesAt)})}>Schedule nomination</Button></>}</HStack></LayoutFooter>} />
     </Dialog>
     <AlertDialog isOpen={Boolean(removeTarget)} onOpenChange={(open) => {if (!open) setRemoveTarget(null);}} title={`Remove ${removeTarget?.name ?? 'item'}?`}
       description={removeTarget?.type === 'delete-position' ? 'This also removes all submitted nominees for this position.' : 'This removes this nominee row from the nomination.'} actionLabel="Remove" actionVariant="destructive"
       onAction={() => {if (!removeTarget) return; void mutate({type: removeTarget.type, [removeTarget.type === 'delete-position' ? 'positionId' : 'nomineeId']: removeTarget.id}).then((saved) => {if (saved) setRemoveTarget(null);});}} />
+    <AlertDialog isOpen={replaceYouthOpen} onOpenChange={setReplaceYouthOpen} title="Replace all Youth Records?"
+      description="Choose a CSV to replace the current list. Names already submitted as nominees will remain in the Nominees table."
+      actionLabel="Choose replacement CSV" onAction={() => {setReplaceYouthOpen(false); replaceYouthInputRef.current?.click();}} />
+    <AlertDialog isOpen={pendingStatusAction !== null} onOpenChange={(open) => {if (!open) setPendingStatusAction(null);}}
+      title={pendingStatusAction === 'archive' ? 'Archive this nomination?' : 'Unpublish this nomination?'}
+      description={pendingStatusAction === 'archive' ? 'The form will stop accepting responses. You can restore this nomination to Draft later.' : nomination.status === 'Scheduled' ? 'The schedule will be removed and the nomination will return to Draft.' : 'The form will stop accepting responses and return to Draft.'}
+      actionLabel={pendingStatusAction === 'archive' ? 'Archive nomination' : 'Unpublish nomination'} isActionLoading={busy}
+      onAction={() => void setStatus(pendingStatusAction === 'archive' ? 'Archived' : 'Draft')} />
+    <AlertDialog isOpen={deleteOpen} onOpenChange={setDeleteOpen} title="Delete this nomination?"
+      description={`This permanently deletes ${nomination.name}, including its positions, nominees, Youth Records, and public link.`}
+      actionLabel="Delete nomination" isActionLoading={busy} onAction={() => void deleteNomination()} />
   </main>;
 }

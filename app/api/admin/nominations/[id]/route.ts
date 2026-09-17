@@ -1,6 +1,6 @@
 import {NextResponse} from 'next/server';
 import {isAdmin} from '@/lib/server/auth';
-import {getNomination, updateNomination} from '@/lib/server/nominations';
+import {deleteNomination, getNomination, updateNomination} from '@/lib/server/nominations';
 import {nominationErrorResponse} from '@/lib/server/nomination-errors';
 
 export const dynamic = 'force-dynamic';
@@ -22,4 +22,13 @@ export async function PATCH(request: Request, context: Context) {
     const action = await request.json();
     return NextResponse.json({nomination: await updateNomination(id, action)});
   } catch (error) { return nominationErrorResponse(error, 'Nomination could not be saved.'); }
+}
+
+export async function DELETE(_request: Request, context: Context) {
+  if (!(await isAdmin())) return NextResponse.json({message: 'Admin sign-in required.'}, {status: 401});
+  try {
+    const {id} = await context.params;
+    await deleteNomination(id);
+    return NextResponse.json({ok: true});
+  } catch (error) { return nominationErrorResponse(error, 'Nomination could not be deleted.'); }
 }

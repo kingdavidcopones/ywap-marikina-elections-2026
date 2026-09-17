@@ -34,13 +34,16 @@ export function VoterLinkState({
   electionTitle,
   startsAt,
   now = Date.now(),
+  subject = 'voting',
 }: {
   kind: 'scheduled' | 'unavailable';
   electionTitle?: string;
   startsAt?: string;
   now?: number;
+  subject?: 'voting' | 'nomination';
 }) {
   const countdown = startsAt ? countdownParts(startsAt, now) : [];
+  const isNomination = subject === 'nomination';
 
   return (
     <AppShell height="fill" variant="wash" contentPadding={0}>
@@ -65,17 +68,17 @@ export function VoterLinkState({
               />
               <VStack gap={2} hAlign="center">
                 <Heading level={1} justify="center">
-                  {kind === 'scheduled' ? 'Voting starts soon' : 'This voting link is unavailable'}
+                  {kind === 'scheduled' ? (isNomination ? 'Nominations start soon' : 'Voting starts soon') : `This ${subject} link is unavailable`}
                 </Heading>
                 <Text color="secondary" as="p" justify="center">
                   {kind === 'scheduled'
-                    ? `${electionTitle ?? 'This election'} opens ${startsAt ? formatStart(startsAt) : 'at its scheduled time'}.`
-                    : 'This election is not accepting votes. It may still be a draft, already closed, or archived.'}
+                    ? `${electionTitle ?? (isNomination ? 'This nomination' : 'This election')} opens ${startsAt ? formatStart(startsAt) : 'at its scheduled time'}.`
+                    : isNomination ? 'This nomination is not accepting responses. It may still be a draft, already closed, or archived.' : 'This election is not accepting votes. It may still be a draft, already closed, or archived.'}
                 </Text>
               </VStack>
 
               {kind === 'scheduled' && countdown.length ? (
-                <section className="voter-countdown" aria-label="Time until voting starts">
+                <section className="voter-countdown" aria-label={`Time until ${isNomination ? 'nominations' : 'voting'} start`}>
                   {countdown.map((part) => (
                     <article key={part.label}>
                       <Text type="display-3" weight="semibold" hasTabularNumbers>{String(part.value).padStart(2, '0')}</Text>

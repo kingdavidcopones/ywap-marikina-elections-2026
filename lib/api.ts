@@ -52,8 +52,18 @@ export async function updateAdminNomination(id: string, action: Record<string, u
   })).nomination;
 }
 
+export async function removeNomination(id: string) {
+  await jsonRequest<{ok: true}>(`/api/admin/nominations/${encodeURIComponent(id)}`, {method: 'DELETE'});
+}
+
 export async function fetchPublicNomination(slug: string) {
   return jsonRequest<{nomination: Nomination; preview: boolean}>(`/api/nominations/${encodeURIComponent(slug)}`);
+}
+
+export type NominationAvailability = Pick<Nomination, 'name' | 'status' | 'opensAt' | 'closesAt'>;
+
+export async function fetchNominationAvailability(slug: string) {
+  return (await jsonRequest<{availability: NominationAvailability}>(`/api/nominations/${encodeURIComponent(slug)}/availability`)).availability;
 }
 
 export async function fetchElection(identifier: string) {

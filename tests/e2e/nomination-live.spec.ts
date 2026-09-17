@@ -37,8 +37,15 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
     expect(created.positions).toEqual([]);
     expect((await patch({type: 'status', status: 'Published'})).status()).toBe(400);
     expect((await publicRequest.get(api(`/api/nominations/${slug}`))).status()).toBe(404);
+    expect((await (await publicRequest.get(api(`/api/nominations/${slug}/availability`))).json()).availability.status).toBe('Draft');
+    const draftPage = await browser.newPage();
+    try {
+      await draftPage.goto(api(`/nominate/${slug}`));
+      await expect(draftPage.getByRole('heading', {name: 'This nomination link is unavailable'})).toBeVisible();
+      await expect(draftPage.getByRole('button', {name: 'Submit nomination'})).toHaveCount(0);
+    } finally { await draftPage.close(); }
 
-    const firstPosition = await patch({type: 'position', name: 'Chairperson', showRoleDetails: true,
+    const firstPosition = await patch({type: 'position', name: 'Chairperson', eligibleAgeGroups: ['teens'], showRoleDetails: true,
       aboutRole: 'Lead the youth council.', responsibilities: ['Plan meetings', 'Represent members']});
     expect(firstPosition.status()).toBe(200);
     const chairId = (await firstPosition.json()).nomination.positions[0].id as string;
@@ -47,17 +54,19 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
       aboutRole: '', responsibilities: []});
     expect(secondPosition.status()).toBe(200);
     const secretaryId = (await secondPosition.json()).nomination.positions[1].id as string;
+    expect((await secondPosition.json()).nomination.positions[1].eligibleAgeGroups).toEqual([]);
 
     await page.goto(api(`/admin/nominations/${id}`));
     await page.getByRole('tab', {name: 'Youth Records'}).click();
     const csvHeader = 'member_id,first_name,last_name,gender,age,birth_date,age_group\n';
-    await page.locator('input[type="file"]').setInputFiles({name: 'invalid-youth.csv', mimeType: 'text/csv',
+    await page.getByLabel('Add Youth Records from CSV').setInputFiles({name: 'invalid-youth.csv', mimeType: 'text/csv',
       buffer: Buffer.from(`${csvHeader}QA-${stamp}-1,Alex,Test,Other,20,2026-02-30,Youth\n`)});
-    await expect(page.getByText('Row 1: invalid birth date. Use YYYY-MM-DD.')).toBeVisible();
-    await page.locator('input[type="file"]').setInputFiles({name: 'youth.csv', mimeType: 'text/csv',
-      buffer: Buffer.from(`${csvHeader}QA-${stamp}-1,Alex,Test,Other,20,2006-01-01,Youth\n`)});
-    await page.getByRole('button', {name: 'Add or update records'}).click();
+    await expect(page.getByText(/Row 1: invalid birth date/)).toBeVisible();
+    await page.getByLabel('Add Youth Records from CSV').setInputFiles({name: 'youth.csv', mimeType: 'text/csv',
+      buffer: Buffer.from(`${csvHeader}QA-${stamp}-1,Alex,Test,Other,20,31/1/2006,Youth\n`)});
     await expect(page.getByText('Youth Records saved.').first()).toBeVisible();
+    const flexibleDateRows = await request.get(api(`/api/admin/nominations/${id}/youth-records?page=1`));
+    expect((await flexibleDateRows.json()).records[0].birthDate).toBe('2006-01-31');
 
     const record = (memberId: string, firstName: string) => ({memberId, firstName, lastName: 'Test', ageGroup: 'Youth', gender: 'Other', age: 20,
       birthDate: '2006-01-01', attributes: {member_id: memberId, first_name: firstName, last_name: 'Test'}});
@@ -77,21 +86,41 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
 
     const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const later = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    await page.goto(api(`/admin/nominations/${id}`));
+    await page.getByRole('button', {name: 'Publish', exact: true}).click();
+    await page.getByRole('menuitem', {name: 'Publish now'}).click();
+    await expect(page.getByRole('dialog', {name: 'Publish this nomination now?'})).toBeVisible();
+    await page.getByRole('button', {name: 'Cancel'}).click();
+    expect((await (await request.get(api(`/api/admin/nominations/${id}`))).json()).nomination.status).toBe('Draft');
+    await page.getByRole('button', {name: 'Publish', exact: true}).click();
+    await page.getByRole('menuitem', {name: 'Schedule later'}).click();
+    await expect(page.getByRole('dialog', {name: 'Schedule nomination'})).toBeVisible();
+    await page.getByRole('button', {name: 'Cancel'}).click();
     expect((await patch({type: 'status', status: 'Scheduled', opensAt: later, closesAt: future})).status()).toBe(400);
     expect((await patch({type: 'status', status: 'Scheduled', opensAt: future, closesAt: later})).status()).toBe(200);
+    const scheduledPage = await browser.newPage();
+    try {
+      await scheduledPage.goto(api(`/nominate/${slug}`));
+      await expect(scheduledPage.getByRole('heading', {name: 'Nominations start soon'})).toBeVisible();
+      await expect(scheduledPage.getByRole('region', {name: 'Time until nominations start'})).toBeVisible();
+      await expect(scheduledPage.getByRole('button', {name: 'Submit nomination'})).toHaveCount(0);
+    } finally { await scheduledPage.close(); }
     expect((await publicRequest.get(api(`/api/nominations/${slug}`))).status()).toBe(404);
     expect((await request.get(api(`/api/nominations/${slug}`))).status()).toBe(200); // Admin preview.
     expect((await (await request.get(api(`/api/nominations/${slug}`))).json()).preview).toBe(true);
     expect((await patch({type: 'status', status: 'Draft'})).status()).toBe(200);
     expect((await patch({type: 'status', status: 'Published'})).status()).toBe(200);
+    expect((await request.delete(api(`/api/admin/nominations/${id}`))).status()).toBe(409);
     expect((await (await publicRequest.get(api(`/api/nominations/${slug}`))).json()).preview).toBe(false);
 
     const found = await publicRequest.get(api(`/api/nominations/${slug}/lookup?q=Alex`));
     expect(found.status()).toBe(200);
     const alex = (await found.json()).records[0];
     expect(alex.name).toBe('Alex Test');
-    const submit = (choices: Record<string, unknown>) => publicRequest.post(api(`/api/nominations/${slug}/submit`), {data: {choices}});
+    const submit = (choices: Record<string, unknown>, ageGroup = 'teens') => publicRequest.post(api(`/api/nominations/${slug}/submit`), {data: {ageGroup, choices}});
+    expect((await submit({[chairId]: {name: 'Alex Test'}, [secretaryId]: {name: 'Taylor Example'}}, 'invalid')).status()).toBe(400);
     expect((await submit({[chairId]: {name: 'A'}})).status()).toBe(400);
+    expect((await submit({[chairId]: {name: 'Alex Test'}, [secretaryId]: {name: 'Taylor Example'}}, 'young_people')).status()).toBe(400);
     expect((await submit({[chairId]: {name: 'Alex Test', youthRecordId: crypto.randomUUID()}, [secretaryId]: {name: 'Taylor Example'}})).status()).toBe(400);
     const choices = {[chairId]: {name: 'Alex Test', youthRecordId: alex.id}, [secretaryId]: {name: 'Taylor Example'}};
     expect((await submit(choices)).status()).toBe(201);
@@ -114,7 +143,12 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
     await page.getByRole('tab', {name: 'Nominees'}).click();
     await expect(page.getByRole('region', {name: 'Nominees'}).getByRole('table')).toBeVisible();
     expect(collectionRequests.some((path) => path.includes('/nominees?page=1'))).toBe(true);
+    await page.getByRole('button', {name: 'Unpublish nomination'}).click();
+    await expect(page.getByRole('alertdialog', {name: 'Unpublish this nomination?'})).toBeVisible();
+    await page.getByRole('button', {name: 'Cancel'}).click();
+    expect((await (await request.get(api(`/api/admin/nominations/${id}`))).json()).nomination.status).toBe('Published');
     await page.getByRole('button', {name: 'Edit details'}).click();
+    await page.getByRole('menuitem', {name: 'Edit details'}).click();
     await page.getByRole('textbox', {name: 'Description'}).fill('Synthetic end-to-end test, edited in browser');
     await page.getByRole('button', {name: 'Save details'}).click();
     await expect(page.getByText('Nomination details saved.').first()).toBeVisible();
@@ -122,14 +156,29 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
     const publicPage = await browser.newPage();
     try {
       await publicPage.goto(api(`/nominate/${slug}`));
+      await expect(publicPage.getByRole('heading', {name: 'Submit your nomination'})).toBeVisible();
+      await publicPage.getByRole('button', {name: 'Continue to nominations'}).click();
+      await expect(publicPage.getByText('Select your age group to continue.')).toBeVisible();
+      await publicPage.getByText('Teens', {exact: true}).click();
+      await publicPage.getByRole('button', {name: 'Continue to nominations'}).click();
       await publicPage.getByRole('button', {name: 'Submit nomination'}).click();
-      await expect(publicPage.getByText('Check the nominee names below.').first()).toBeVisible();
-      await publicPage.getByRole('textbox', {name: 'Nominee for Chairperson'}).fill('Alex');
+      await expect(publicPage.getByText('Enter at least 2 characters.').first()).toBeVisible();
+      await expect(publicPage.getByPlaceholder('Nominate for Chairperson')).toBeVisible();
+      await publicPage.getByRole('textbox', {name: 'Chairperson'}).fill('Alex');
       await publicPage.getByRole('button', {name: 'Choose Alex Test'}).click();
-      await publicPage.getByRole('textbox', {name: 'Nominee for Secretary'}).fill('Taylor Example');
+      await publicPage.getByRole('textbox', {name: 'Secretary'}).fill('Taylor Example');
       await publicPage.getByRole('button', {name: 'Submit nomination'}).click();
       await expect(publicPage.getByRole('heading', {name: 'Nomination submitted'})).toBeVisible();
     } finally {await publicPage.close();}
+
+    const youngPeoplePage = await browser.newPage();
+    try {
+      await youngPeoplePage.goto(api(`/nominate/${slug}`));
+      await youngPeoplePage.getByText('Young People', {exact: true}).click();
+      await youngPeoplePage.getByRole('button', {name: 'Continue to nominations'}).click();
+      await expect(youngPeoplePage.getByRole('textbox', {name: 'Secretary'})).toBeVisible();
+      await expect(youngPeoplePage.getByRole('textbox', {name: 'Chairperson'})).toHaveCount(0);
+    } finally {await youngPeoplePage.close();}
 
     expect((await patch({type: 'delete-nominee', nomineeId: nominees.nominees[0].id})).status()).toBe(200);
     expect((await (await request.get(api(`/api/admin/nominations/${id}/nominees?page=1`))).json()).total).toBe(5);
@@ -143,8 +192,25 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
     expect((await patch({type: 'status', status: 'Draft'})).status()).toBe(200);
     expect((await patch({type: 'status', status: 'Published'})).status()).toBe(200);
     expect((await patch({type: 'status', status: 'Archived'})).status()).toBe(200);
-    expect((await publicRequest.post(api(`/api/nominations/${slug}/submit`), {data: {choices}})).status()).toBe(404);
+    expect((await publicRequest.post(api(`/api/nominations/${slug}/submit`), {data: {ageGroup: 'teens', choices}})).status()).toBe(404);
+    await page.goto(api(`/admin/nominations/${id}`));
+    await page.getByRole('button', {name: 'Edit details'}).click();
+    await page.getByRole('menuitem', {name: 'Delete nomination'}).click();
+    await expect(page.getByRole('alertdialog', {name: 'Delete this nomination?'})).toBeVisible();
+    await page.getByRole('button', {name: 'Cancel'}).click();
+    expect((await request.get(api(`/api/admin/nominations/${id}`))).status()).toBe(200);
+    await page.getByRole('button', {name: 'Edit details'}).click();
+    await page.getByRole('menuitem', {name: 'Delete nomination'}).click();
+    const deleteResponse = page.waitForResponse((response) => response.url() === api(`/api/admin/nominations/${id}`) && response.request().method() === 'DELETE');
+    await page.getByRole('button', {name: 'Delete nomination'}).click();
+    expect((await deleteResponse).status()).toBe(200);
+    await expect(page).toHaveURL(api('/admin/nominations'));
+    expect((await request.get(api(`/api/admin/nominations/${id}`))).status()).toBe(404);
+    id = '';
   } finally {
-    if (id) await request.patch(api(`/api/admin/nominations/${id}`), {data: {type: 'status', status: 'Archived'}});
+    if (id) {
+      await request.patch(api(`/api/admin/nominations/${id}`), {data: {type: 'status', status: 'Archived'}});
+      await request.delete(api(`/api/admin/nominations/${id}`));
+    }
   }
 });

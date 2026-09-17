@@ -6,6 +6,7 @@ import {ArrowLeftIcon} from '@phosphor-icons/react/ArrowLeft';
 import {ArrowUpRightIcon} from '@phosphor-icons/react/ArrowUpRight';
 import {ArchiveIcon} from '@phosphor-icons/react/Archive';
 import {CopySimpleIcon} from '@phosphor-icons/react/CopySimple';
+import {DownloadSimpleIcon} from '@phosphor-icons/react/DownloadSimple';
 import {PencilSimpleIcon} from '@phosphor-icons/react/PencilSimple';
 import {PlusIcon} from '@phosphor-icons/react/Plus';
 import {TrashIcon} from '@phosphor-icons/react/Trash';
@@ -657,7 +658,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
   }
 
   const isOpen = election.status === 'Open' || election.status === 'Published';
-  const ballotLabel = isOpen ? 'View ballot' : 'Preview ballot';
+  const ballotLabel = isOpen ? 'View ballot' : 'Open voting link';
   const statusLabel = election.status === 'Published' ? 'Open' : election.status;
   const deletionLocked = isDeletionLocked(election.status);
   const positionsWithoutCandidates = election.positions.filter((position) => position.nominees.length === 0);
@@ -936,43 +937,46 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
           <header className="section-heading-row">
             <VStack gap={1}>
               <Heading level={2}>Eligible voters</Heading>
-              <Text color="secondary">See who can vote in this election, or replace the list with a new CSV.</Text>
+              <Text color="secondary">Upload a CSV to add or replace eligible voters. Replace the template’s example row before uploading.</Text>
             </VStack>
-            {voterRows.length ? (
-              <DropdownMenu
-                button={{
-                  label: 'Upload voter data',
-                  variant: 'secondary',
-                  icon: <UploadSimpleIcon />,
-                  isDisabled: isOpen,
-                  tooltip: isOpen ? 'Voter data can’t be changed while this election is open.' : undefined,
-                }}
-                items={[
-                  {
-                    label: 'Add data from CSV',
-                    description: 'Keep the current list and add matching Member IDs.',
-                    onClick: () => addVotersInputRef.current?.click(),
-                  },
-                  {
-                    label: 'Replace entire list',
-                    description: 'Remove the current list and replace it with this CSV.',
-                    variant: 'destructive',
-                    onClick: () => setIsReplaceVotersOpen(true),
-                  },
-                ]}
-                presentation="adaptive"
-                alignment="end"
-              />
-            ) : (
-              <Button
-                label="Upload voter data"
-                variant="secondary"
-                icon={<UploadSimpleIcon />}
-                onClick={() => addVotersInputRef.current?.click()}
-                isDisabled={isOpen}
-                tooltip={isOpen ? 'Voter data can’t be changed while this election is open.' : undefined}
-              />
-            )}
+            <HStack gap={2} align="center" wrap="wrap">
+              <Button label="Download CSV Template" href="/api/csv-template/eligible-voters" variant="secondary" icon={<DownloadSimpleIcon />} />
+              {voterRows.length ? (
+                <DropdownMenu
+                  button={{
+                    label: 'Upload voter data',
+                    variant: 'secondary',
+                    icon: <UploadSimpleIcon />,
+                    isDisabled: isOpen,
+                    tooltip: isOpen ? 'Voter data can’t be changed while this election is open.' : undefined,
+                  }}
+                  items={[
+                    {
+                      label: 'Add data from CSV',
+                      description: 'Keep the current list and add matching Member IDs.',
+                      onClick: () => addVotersInputRef.current?.click(),
+                    },
+                    {
+                      label: 'Replace entire list',
+                      description: 'Remove the current list and replace it with this CSV.',
+                      variant: 'destructive',
+                      onClick: () => setIsReplaceVotersOpen(true),
+                    },
+                  ]}
+                  presentation="adaptive"
+                  alignment="end"
+                />
+              ) : (
+                <Button
+                  label="Upload voter data"
+                  variant="secondary"
+                  icon={<UploadSimpleIcon />}
+                  onClick={() => addVotersInputRef.current?.click()}
+                  isDisabled={isOpen}
+                  tooltip={isOpen ? 'Voter data can’t be changed while this election is open.' : undefined}
+                />
+              )}
+            </HStack>
             <input
               ref={addVotersInputRef}
               className="sr-only"
@@ -1029,16 +1033,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
               <EmptyState
                 icon={<Icon icon={UserListIcon} size="lg" />}
                 title="No eligible voters yet"
-                description="Upload a CSV to add the people who can vote in this election."
-                actions={
-                  <Button
-                    label="Upload voter data"
-                    variant="primary"
-                    icon={<UploadSimpleIcon />}
-                    onClick={() => addVotersInputRef.current?.click()}
-                    isDisabled={isOpen}
-                  />
-                }
+                description="Use the Upload voter data button to add people who can vote in this election."
               />
             )}
             {voterRows.length > VOTERS_PAGE_SIZE ? (

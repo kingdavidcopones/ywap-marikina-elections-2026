@@ -1,7 +1,7 @@
 import 'server-only';
 import {createServerSupabaseClient} from '@/lib/supabase';
 import {NominationError} from '@/lib/server/nomination-errors';
-import type {Nomination, NominationEntry, NominationPosition, NominationStatus, NominationSummary, YouthRecord} from '@/lib/nomination-data';
+import {isNominationAgeGroup, positionVisibleToAgeGroup, type Nomination, type NominationEntry, type NominationPosition, type NominationStatus, type NominationSummary, type YouthRecord} from '@/lib/nomination-data';
 
 type RecordInput = Omit<YouthRecord, 'id' | 'name' | 'importedAt'>;
 const statuses: Record<string, NominationStatus> = {draft: 'Draft', scheduled: 'Scheduled', published: 'Published', archived: 'Archived'};
@@ -37,6 +37,7 @@ async function allRows<T>(load: (from: number, to: number) => PromiseLike<{data:
 
 function mapPosition(row: any): NominationPosition {
   return {id: row.id, name: row.name, showRoleDetails: row.show_role_details, aboutRole: row.about_role,
+    eligibleAgeGroups: Array.isArray(row.eligible_age_groups) ? row.eligible_age_groups.filter(isNominationAgeGroup) : [],
     responsibilities: Array.isArray(row.responsibilities) ? row.responsibilities : []};
 }
 
@@ -75,6 +76,13 @@ export async function getNomination(identifier: string, admin = false): Promise<
     positions: positions.map(mapPosition), nomineeCount: admin ? Number(row.nomination_entries?.[0]?.count ?? 0) : 0,
     youthRecordCount: admin ? Number(row.nomination_youth_records?.[0]?.count ?? 0) : 0,
     youthRecords: [], nominees: []};
+}
+
+export async function getNominationAvailability(slug: string) {
+  const {data, error} = await createServerSupabaseClient().from('nominations')
+    .select('name, status, opens_at, closes_at').eq('slug', slug).maybeSingle();
+  check(error);
+  return data ? {name: data.name, status: statuses[data.status], opensAt: data.opens_at ?? '', closesAt: data.closes_at ?? ''} : null;
 }
 
 export async function getNominationNominees(id: string, page: number) {
@@ -148,9 +156,13 @@ export async function updateNomination(id: string, action: any) {
     const name = typeof action.name === 'string' ? action.name.trim() : '';
     if (name.length < 2 || name.length > 120) throw new NominationError('Enter a position name of 2–120 characters.');
     if (current.positions.some((position) => position.id !== action.positionId && position.name.toLocaleLowerCase('en') === name.toLocaleLowerCase('en'))) throw new NominationError('A position with this name already exists.', 409);
+    const eligibleAgeGroups = action.eligibleAgeGroups === undefined
+      ? current.positions.find((position) => position.id === action.positionId)?.eligibleAgeGroups ?? []
+      : action.eligibleAgeGroups;
+    if (!Array.isArray(eligibleAgeGroups) || eligibleAgeGroups.length > 3 || eligibleAgeGroups.some((group: unknown) => !isNominationAgeGroup(group)) || new Set(eligibleAgeGroups).size !== eligibleAgeGroups.length) throw new NominationError('Choose valid age groups for this position.');
     if (typeof action.showRoleDetails !== 'boolean' || typeof action.aboutRole !== 'string' || action.aboutRole.length > 2000 || !Array.isArray(action.responsibilities) || action.responsibilities.length > 20 || action.responsibilities.some((item: unknown) => typeof item !== 'string' || item.length > 500)) throw new NominationError('Check the role details and responsibilities.');
     const responsibilities = action.responsibilities.map((item: string) => item.trim()).filter(Boolean);
-    const values = {name, show_role_details: action.showRoleDetails, about_role: action.aboutRole.trim(), responsibilities};
+    const values = {name, eligible_age_groups: eligibleAgeGroups, show_role_details: action.showRoleDetails, about_role: action.aboutRole.trim(), responsibilities};
     if (action.positionId) {
       if (!current.positions.some((position) => position.id === action.positionId)) throw new NominationError('Position not found.', 404);
       check((await supabase.from('nomination_positions').update(values).eq('id', action.positionId).eq('nomination_id', id)).error);
@@ -197,6 +209,15 @@ export async function updateNomination(id: string, action: any) {
   return getNomination(id, true);
 }
 
+export async function deleteNomination(id: string) {
+  const current = await getNomination(id, true);
+  if (!current) throw new NominationError('Nomination not found.', 404);
+  if (current.status !== 'Draft' && current.status !== 'Archived') throw new NominationError('Unpublish the nomination before deleting it.', 409);
+  const {data, error} = await createServerSupabaseClient().from('nominations').delete().eq('id', current.id).select('id').maybeSingle();
+  check(error);
+  if (!data) throw new NominationError('Nomination not found.', 404);
+}
+
 export async function searchYouthRecords(identifier: string, term: string, admin = false) {
   const nomination = await getNomination(identifier, admin);
   if (!nomination) throw new NominationError('This nomination is unavailable.', 404);
@@ -209,15 +230,18 @@ export async function searchYouthRecords(identifier: string, term: string, admin
   return (data ?? []).map((row) => ({id: row.id, name: `${row.first_name} ${row.last_name}`, ageGroup: row.age_group}));
 }
 
-export async function submitNomination(identifier: string, choices: Record<string, {name: string; youthRecordId?: string}>) {
+export async function submitNomination(identifier: string, ageGroup: unknown, choices: Record<string, {name: string; youthRecordId?: string}>) {
   const nomination = await getNomination(identifier);
   if (!nomination) throw new NominationError('This nomination is not accepting responses.', 404);
-  if (!choices || typeof choices !== 'object' || Array.isArray(choices) || Object.keys(choices).length !== nomination.positions.length || !nomination.positions.length) throw new NominationError('Complete every position before submitting.');
-  for (const position of nomination.positions) {
+  if (!isNominationAgeGroup(ageGroup)) throw new NominationError('Choose your age group before submitting.');
+  const positions = nomination.positions.filter((position) => positionVisibleToAgeGroup(position, ageGroup));
+  if (!choices || typeof choices !== 'object' || Array.isArray(choices) || Object.keys(choices).length !== positions.length || !positions.length
+    || Object.keys(choices).some((id) => !positions.some((position) => position.id === id))) throw new NominationError('Complete every position available to your age group.');
+  for (const position of positions) {
     const choice = choices[position.id];
     if (!choice || typeof choice !== 'object' || Array.isArray(choice) || typeof choice.name !== 'string' || choice.name.trim().length < 2 || choice.name.trim().length > 160 || (choice.youthRecordId !== undefined && !validUuid(choice.youthRecordId))) throw new NominationError(`Enter a valid nominee for ${position.name}.`);
   }
-  const {data, error} = await createServerSupabaseClient().rpc('submit_nomination', {p_nomination_id: nomination.id, p_choices: choices});
+  const {data, error} = await createServerSupabaseClient().rpc('submit_nomination', {p_nomination_id: nomination.id, p_age_group: ageGroup, p_choices: choices});
   check(error);
   return data as string;
 }

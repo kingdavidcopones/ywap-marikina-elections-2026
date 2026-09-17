@@ -63,7 +63,7 @@ export function ElectionDashboard() {
           const turnout = event.eligibleVoters ? event.ballotsSubmitted / event.eligibleVoters * 100 : 0;
           const isOpen = event.status === 'Open' || event.status === 'Published';
           const statusLabel = event.status === 'Published' ? 'Open' : event.status;
-          const ballotLabel = isOpen ? 'View ballot' : 'Preview ballot';
+          const ballotLabel = isOpen ? 'View ballot' : 'Open voting link';
           const ballotSlug = event.ballotSlug || `${event.id}-preview`;
           return (
             <Card key={event.id} padding={6} className="event-card">

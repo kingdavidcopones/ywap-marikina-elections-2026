@@ -8,7 +8,7 @@ export async function POST(request: Request, context: {params: Promise<{slug: st
     const {slug} = await context.params;
     const body = await request.json();
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new NominationError('Send valid nomination choices.');
-    const {choices} = body;
-    return NextResponse.json({submittedAt: await submitNomination(slug, choices)}, {status: 201});
+    const {ageGroup, choices} = body;
+    return NextResponse.json({submittedAt: await submitNomination(slug, ageGroup, choices)}, {status: 201});
   } catch (error) { return nominationErrorResponse(error, 'Nomination could not be submitted.'); }
 }
