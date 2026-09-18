@@ -45,13 +45,12 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
       await expect(draftPage.getByRole('button', {name: 'Submit nomination'})).toHaveCount(0);
     } finally { await draftPage.close(); }
 
-    const firstPosition = await patch({type: 'position', name: 'Chairperson', eligibleAgeGroups: ['teens'], showRoleDetails: true,
-      aboutRole: 'Lead the youth council.', responsibilities: ['Plan meetings', 'Represent members']});
+    const firstPosition = await patch({type: 'position', name: 'Chairperson', eligibleAgeGroups: ['teens'], required: true,
+      shortDescription: 'Lead the youth council.'});
     expect(firstPosition.status()).toBe(200);
     const chairId = (await firstPosition.json()).nomination.positions[0].id as string;
-    expect((await patch({type: 'position', name: 'chairperson', showRoleDetails: false, aboutRole: '', responsibilities: []})).status()).toBe(409);
-    const secondPosition = await patch({type: 'position', name: 'Secretary', showRoleDetails: false,
-      aboutRole: '', responsibilities: []});
+    expect((await patch({type: 'position', name: 'chairperson', required: false, shortDescription: ''})).status()).toBe(409);
+    const secondPosition = await patch({type: 'position', name: 'Secretary', required: true, shortDescription: ''});
     expect(secondPosition.status()).toBe(200);
     const secretaryId = (await secondPosition.json()).nomination.positions[1].id as string;
     expect((await secondPosition.json()).nomination.positions[1].eligibleAgeGroups).toEqual([]);
@@ -145,6 +144,7 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
     await page.getByRole('tab', {name: 'Nominees'}).click();
     await expect(page.getByRole('region', {name: 'Nominees'}).getByRole('table')).toBeVisible();
     expect(collectionRequests.some((path) => path.includes('/nominees?page=1'))).toBe(true);
+    await expect(page.getByRole('link', {name: 'Download Nominees'})).toHaveAttribute('href', `/api/admin/nominations/${id}/nominees/export`);
     await page.getByRole('button', {name: 'Unpublish nomination'}).click();
     await expect(page.getByRole('alertdialog', {name: 'Unpublish this nomination?'})).toBeVisible();
     await page.getByRole('button', {name: 'Cancel'}).click();

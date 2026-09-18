@@ -1,5 +1,6 @@
 import 'server-only';
 import {createServerSupabaseClient} from '@/lib/supabase';
+import {normalizeGender} from '@/lib/csv';
 import {NominationError} from '@/lib/server/nomination-errors';
 import {isNominationAgeGroup, positionVisibleToAgeGroup, type Nomination, type NominationEntry, type NominationPosition, type NominationStatus, type NominationSummary, type YouthRecord} from '@/lib/nomination-data';
 
@@ -40,9 +41,15 @@ async function allRows<T>(load: (from: number, to: number) => PromiseLike<{data:
 }
 
 function mapPosition(row: any): NominationPosition {
-  return {id: row.id, name: row.name, showRoleDetails: row.show_role_details, aboutRole: row.about_role,
-    eligibleAgeGroups: Array.isArray(row.eligible_age_groups) ? row.eligible_age_groups.filter(isNominationAgeGroup) : [],
-    responsibilities: Array.isArray(row.responsibilities) ? row.responsibilities : []};
+  return {id: row.id, name: row.name, required: row.required, shortDescription: row.short_description,
+    eligibleAgeGroups: Array.isArray(row.eligible_age_groups) ? row.eligible_age_groups.filter(isNominationAgeGroup) : []};
+}
+
+function mapNomineeEntry(entry: any, names: Map<string, string>): NominationEntry {
+  return {id: entry.id, nomineeName: entry.nominee_name, positionId: entry.position_id,
+    positionName: names.get(entry.position_id) ?? 'Deleted position', youthRecordId: entry.youth_record_id ?? undefined,
+    submittedAt: entry.submitted_at, nominatorName: entry.nomination_submissions?.nominator_name ?? undefined,
+    nominatorEmail: entry.nomination_submissions?.nominator_email ?? undefined};
 }
 
 function mapRecord(row: any): YouthRecord {
@@ -99,11 +106,17 @@ export async function getNominationNominees(id: string, page: number) {
     .eq('nomination_id', nomination.id).order('submitted_at', {ascending: false}).order('id').range(from, from + 9);
   check(error);
   const names = new Map(nomination.positions.map((position) => [position.id, position.name]));
-  return {nominees: (data ?? []).map((entry: any): NominationEntry => ({id: entry.id, nomineeName: entry.nominee_name,
-    positionId: entry.position_id, positionName: names.get(entry.position_id) ?? 'Deleted position',
-    youthRecordId: entry.youth_record_id ?? undefined, submittedAt: entry.submitted_at,
-    nominatorName: entry.nomination_submissions?.nominator_name ?? undefined,
-    nominatorEmail: entry.nomination_submissions?.nominator_email ?? undefined})), total: count ?? 0};
+  return {nominees: (data ?? []).map((entry) => mapNomineeEntry(entry, names)), total: count ?? 0};
+}
+
+export async function getAllNominationNominees(id: string) {
+  const nomination = await getNomination(id, true);
+  if (!nomination) throw new NominationError('Nomination not found.', 404);
+  const rows = await allRows<any>((from, to) => createServerSupabaseClient().from('nomination_entries')
+    .select('id, nominee_name, position_id, youth_record_id, submitted_at, nomination_submissions(nominator_name, nominator_email)')
+    .eq('nomination_id', nomination.id).order('submitted_at', {ascending: false}).order('id').range(from, to));
+  const names = new Map(nomination.positions.map((position) => [position.id, position.name]));
+  return rows.map((entry) => mapNomineeEntry(entry, names));
 }
 
 export async function getNominationYouthRecords(id: string, page: number) {
@@ -168,9 +181,8 @@ export async function updateNomination(id: string, action: any) {
       ? current.positions.find((position) => position.id === action.positionId)?.eligibleAgeGroups ?? []
       : action.eligibleAgeGroups;
     if (!Array.isArray(eligibleAgeGroups) || eligibleAgeGroups.length > 3 || eligibleAgeGroups.some((group: unknown) => !isNominationAgeGroup(group)) || new Set(eligibleAgeGroups).size !== eligibleAgeGroups.length) throw new NominationError('Choose valid age groups for this position.');
-    if (typeof action.showRoleDetails !== 'boolean' || typeof action.aboutRole !== 'string' || action.aboutRole.length > 2000 || !Array.isArray(action.responsibilities) || action.responsibilities.length > 20 || action.responsibilities.some((item: unknown) => typeof item !== 'string' || item.length > 500)) throw new NominationError('Check the role details and responsibilities.');
-    const responsibilities = action.responsibilities.map((item: string) => item.trim()).filter(Boolean);
-    const values = {name, eligible_age_groups: eligibleAgeGroups, show_role_details: action.showRoleDetails, about_role: action.aboutRole.trim(), responsibilities};
+    if (typeof action.required !== 'boolean' || typeof action.shortDescription !== 'string' || action.shortDescription.length > 80) throw new NominationError('Check the required flag and short role description.');
+    const values = {name, eligible_age_groups: eligibleAgeGroups, required: action.required, short_description: action.shortDescription.trim()};
     if (action.positionId) {
       if (!current.positions.some((position) => position.id === action.positionId)) throw new NominationError('Position not found.', 404);
       check((await supabase.from('nomination_positions').update(values).eq('id', action.positionId).eq('nomination_id', id)).error);
@@ -203,7 +215,8 @@ export async function updateNomination(id: string, action: any) {
       if (seen.has(normalized)) throw new NominationError(`Duplicate Member ID: ${memberId}.`);
       seen.add(normalized);
     });
-    check((await supabase.rpc('save_nomination_youth_records', {p_nomination_id: id, p_mode: action.mode, p_records: records})).error);
+    const normalizedRecords = records.map((record) => ({...record, gender: record.gender ? normalizeGender(record.gender) : record.gender}));
+    check((await supabase.rpc('save_nomination_youth_records', {p_nomination_id: id, p_mode: action.mode, p_records: normalizedRecords})).error);
   } else if (action.type === 'delete-nominee') {
     const {data: deleted, error: deleteError} = await supabase.from('nomination_entries').delete().eq('id', action.nomineeId).eq('nomination_id', id).select('id').maybeSingle();
     check(deleteError);
@@ -256,11 +269,17 @@ export async function submitNomination(identifier: string, ageGroup: unknown, na
   if (!validEmail(email)) throw new NominationError('Enter a valid email address.');
   if (name !== undefined && (typeof name !== 'string' || name.trim().length > 160)) throw new NominationError('Use at most 160 characters for your name.');
   const positions = nomination.positions.filter((position) => positionVisibleToAgeGroup(position, ageGroup));
-  if (!choices || typeof choices !== 'object' || Array.isArray(choices) || Object.keys(choices).length !== positions.length || !positions.length
-    || Object.keys(choices).some((id) => !positions.some((position) => position.id === id))) throw new NominationError('Complete every position available to your age group.');
+  if (!choices || typeof choices !== 'object' || Array.isArray(choices) || !positions.length
+    || Object.keys(choices).some((id) => !positions.some((position) => position.id === id))) throw new NominationError('Complete every required position available to your age group.');
   for (const position of positions) {
     const choice = choices[position.id];
-    if (!choice || typeof choice !== 'object' || Array.isArray(choice) || typeof choice.name !== 'string' || choice.name.trim().length < 2 || choice.name.trim().length > 160 || (choice.youthRecordId !== undefined && !validUuid(choice.youthRecordId))) throw new NominationError(`Enter a valid nominee for ${position.name}.`);
+    if (choice !== undefined && (!choice || typeof choice !== 'object' || Array.isArray(choice) || typeof choice.name !== 'string')) throw new NominationError(`Enter a valid nominee for ${position.name}.`);
+    const nomineeName = choice?.name.trim() ?? '';
+    if (!nomineeName) {
+      if (position.required) throw new NominationError(`Enter a nominee for ${position.name}.`);
+      continue;
+    }
+    if (nomineeName.length < 2 || nomineeName.length > 160 || (choice.youthRecordId !== undefined && !validUuid(choice.youthRecordId))) throw new NominationError(`Enter a valid nominee for ${position.name}.`);
   }
   const {data, error} = await createServerSupabaseClient().rpc('submit_nomination', {p_nomination_id: nomination.id, p_age_group: ageGroup,
     p_nominator_name: typeof name === 'string' && name.trim() ? name.trim() : null, p_nominator_email: (email as string).trim(), p_choices: choices});

@@ -16,9 +16,8 @@ export type NominationPosition = {
   id: string;
   name: string;
   eligibleAgeGroups: NominationAgeGroup[];
-  showRoleDetails: boolean;
-  aboutRole: string;
-  responsibilities: string[];
+  required: boolean;
+  shortDescription: string;
 };
 
 export function positionVisibleToAgeGroup(position: NominationPosition, ageGroup: NominationAgeGroup) {

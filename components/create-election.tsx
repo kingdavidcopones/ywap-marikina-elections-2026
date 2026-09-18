@@ -14,7 +14,7 @@ import {Text} from '@astryxdesign/core/Text';
 import {TextArea} from '@astryxdesign/core/TextArea';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {useToast} from '@astryxdesign/core/Toast';
-import {parseCsvLine, parseVoters} from '@/lib/csv';
+import {normalizeGender, parseCsvLine, parseVoters} from '@/lib/csv';
 import {type ElectionEvent, type EligibleVoter} from '@/lib/election-data';
 import {createElection} from '@/lib/api';
 
@@ -69,7 +69,7 @@ function validateVoterRows(csv: string) {
       memberId,
       lastName: record.last_name.trim(),
       firstName: record.first_name.trim(),
-      gender: record.gender.trim(),
+      gender: normalizeGender(record.gender),
       age,
       birthDate: record.birth_date.trim(),
       ageGroup: record.age_group.trim(),

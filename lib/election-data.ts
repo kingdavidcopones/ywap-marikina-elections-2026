@@ -75,6 +75,7 @@ export interface IndividualVoteRecord extends Record<string, unknown> {
   id: string;
   memberId: string;
   voterName: string;
+  ageGroup: string;
   submittedAt: string;
   position: string;
   choice: string;

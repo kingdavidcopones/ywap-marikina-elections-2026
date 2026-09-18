@@ -1,8 +1,8 @@
 import {expect, test} from '@playwright/test';
 
 const positions = [
-  {id: 'teen-position', name: 'Teen Representative', eligibleAgeGroups: ['teens'], showRoleDetails: false, aboutRole: '', responsibilities: []},
-  {id: 'open-position', name: 'Secretary', eligibleAgeGroups: [], showRoleDetails: false, aboutRole: '', responsibilities: []},
+  {id: 'teen-position', name: 'Teen Representative', eligibleAgeGroups: ['teens'], required: true, shortDescription: 'Speaks for teen members.'},
+  {id: 'open-position', name: 'Secretary', eligibleAgeGroups: [], required: true, shortDescription: ''},
 ];
 
 test('nomination wizard reviews choices, confirms submission, and keeps one card width', async ({page}) => {
@@ -60,6 +60,7 @@ test('nomination wizard reviews choices, confirms submission, and keeps one card
   await page.getByText('Teens', {exact: true}).click();
   await page.getByRole('button', {name: 'Continue to nominations'}).click();
   await expect(page.getByRole('combobox', {name: 'Teen Representative'})).toBeVisible();
+  await expect(page.getByText('Speaks for teen members.')).toBeVisible();
   await page.getByRole('button', {name: 'Review'}).click();
   await expect(page.getByText('Choose a name from the suggestions.').first()).toBeVisible();
   await page.getByRole('combobox', {name: 'Teen Representative'}).fill('Alex');

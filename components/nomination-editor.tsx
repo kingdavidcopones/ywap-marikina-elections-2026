@@ -35,10 +35,10 @@ import {TextInput} from '@astryxdesign/core/TextInput';
 import {useToast} from '@astryxdesign/core/Toast';
 import {fetchAdminNomination, fetchNominationNominees, fetchNominationYouthRecords, removeNomination, updateAdminNomination} from '@/lib/api';
 import {ElectionEditorSkeleton} from '@/components/loading-states';
-import {normalizeCsvBirthDate, parseVoters} from '@/lib/csv';
+import {normalizeCsvBirthDate, normalizeGender, parseVoters} from '@/lib/csv';
 import {NOMINATION_AGE_GROUPS, isNominationAgeGroup, type Nomination, type NominationAgeGroup, type NominationEntry, type NominationPosition, type NominationStatus, type YouthRecord} from '@/lib/nomination-data';
 
-interface PositionRow extends Record<string, unknown> { id: string; name: string; audience: string; about: string; responsibilities: string; }
+interface PositionRow extends Record<string, unknown> { id: string; name: string; audience: string; shortDescription: string; required: string; }
 interface NomineeRow extends Record<string, unknown> { id: string; nomineeName: string; positionName: string; nominatedBy: string; submittedAt: string; }
 interface YouthRow extends Record<string, unknown> { id: string; memberId: string; name: string; ageGroup: string; importedAt: string; }
 type UploadRecord = Omit<YouthRecord, 'id' | 'name' | 'importedAt'>;
@@ -73,7 +73,7 @@ function parseYouthCsv(csv: string): UploadRecord[] {
     const birthDate = normalizeCsvBirthDate(record.birth_date);
     if (!birthDate) throw new Error(`Row ${index + 1}: invalid birth date. Use a date such as 2006-01-31, 1/31/2006, or 31/1/2006.`);
     return {memberId, firstName: record.first_name.trim(), lastName: record.last_name.trim(), ageGroup: record.age_group.trim(),
-      gender: record.gender.trim(), age, birthDate, attributes: record};
+      gender: normalizeGender(record.gender), age, birthDate, attributes: record};
   });
 }
 
@@ -97,9 +97,8 @@ export function NominationEditor({id}: {id: string}) {
   const [editingPosition, setEditingPosition] = useState<NominationPosition | null>(null);
   const [positionName, setPositionName] = useState('');
   const [eligibleAgeGroups, setEligibleAgeGroups] = useState<NominationAgeGroup[]>([]);
-  const [showRoleDetails, setShowRoleDetails] = useState(false);
-  const [aboutRole, setAboutRole] = useState('');
-  const [responsibilities, setResponsibilities] = useState('');
+  const [required, setRequired] = useState(false);
+  const [shortDescription, setShortDescription] = useState('');
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleStep, setScheduleStep] = useState<'edit' | 'confirm'>('edit');
   const [publishOpen, setPublishOpen] = useState(false);
@@ -172,9 +171,8 @@ export function NominationEditor({id}: {id: string}) {
     setEditingPosition(position ?? null);
     setPositionName(position?.name ?? '');
     setEligibleAgeGroups(position?.eligibleAgeGroups ?? []);
-    setShowRoleDetails(position?.showRoleDetails ?? false);
-    setAboutRole(position?.aboutRole ?? '');
-    setResponsibilities(position?.responsibilities.join('\n') ?? '');
+    setRequired(position?.required ?? false);
+    setShortDescription(position?.shortDescription ?? '');
     setPositionError('');
     setPositionOpen(true);
   }
@@ -183,10 +181,10 @@ export function NominationEditor({id}: {id: string}) {
     const trimmed = positionName.trim();
     if (trimmed.length < 2 || trimmed.length > 120) {setPositionError('Use 2–120 characters for the position name.'); return;}
     if (nomination?.positions.some((position) => position.id !== editingPosition?.id && position.name.toLocaleLowerCase('en') === trimmed.toLocaleLowerCase('en'))) {setPositionError('A position with this name already exists.'); return;}
-    if (aboutRole.length > 2000 || responsibilities.split('\n').length > 20 || responsibilities.split('\n').some((line) => line.length > 500)) {setPositionError('Keep role details under 2,000 characters and up to 20 responsibilities of 500 characters each.'); return;}
+    if (shortDescription.length > 80) {setPositionError('Keep the short role description under 80 characters.'); return;}
     setPositionError('');
     if (await mutate({type: 'position', positionId: editingPosition?.id, name: positionName,
-      eligibleAgeGroups, showRoleDetails, aboutRole, responsibilities: responsibilities.split('\n')})) setPositionOpen(false);
+      eligibleAgeGroups, required, shortDescription})) setPositionOpen(false);
   }
   async function setStatus(status: NominationStatus, schedule?: {opensAt: string; closesAt: string}) {
     if (status === 'Scheduled' && (!schedule?.opensAt || !schedule?.closesAt || Date.parse(schedule.opensAt) <= Date.now() || Date.parse(schedule.closesAt) <= Date.parse(schedule.opensAt))) {setScheduleError('Choose a future opening time and a later closing time.'); return;}
@@ -236,8 +234,8 @@ export function NominationEditor({id}: {id: string}) {
   if (!nomination) return <main className="admin-page"><Card padding={6}><Heading level={1}>Nomination unavailable</Heading><Text>{error || 'It may have been removed.'}</Text></Card></main>;
   const positionRows: PositionRow[] = nomination.positions.map((position) => ({id: position.id, name: position.name,
     audience: position.eligibleAgeGroups.length ? NOMINATION_AGE_GROUPS.filter((group) => position.eligibleAgeGroups.includes(group.value)).map((group) => group.label).join(', ') : 'All age groups',
-    about: position.showRoleDetails ? position.aboutRole || 'Shown, no description' : 'Hidden',
-    responsibilities: position.showRoleDetails ? position.responsibilities.join(' · ') || 'None added' : 'Hidden'}));
+    shortDescription: position.shortDescription || 'None added',
+    required: position.required ? 'Required' : 'Optional'}));
   const nomineeRows: NomineeRow[] = nomineeEntries.map((entry: NominationEntry) => ({id: entry.id, nomineeName: entry.nomineeName,
     positionName: entry.positionName, nominatedBy: entry.nominatorName || entry.nominatorEmail || '—', submittedAt: entry.submittedAt}));
   const youthRows: YouthRow[] = youthRecords.map((record) => ({id: record.id, memberId: record.memberId, name: record.name,
@@ -288,19 +286,20 @@ export function NominationEditor({id}: {id: string}) {
       </TabList>
     </VStack>
     {tab === 'positions' ? <section id="nomination-positions-panel" role="tabpanel" className="dashboard-section" aria-label="Nomination positions">
-      <header className="section-heading-row"><VStack gap={1}><Heading level={2}>Positions</Heading><Text color="secondary">Set who can nominate for each position and which role details appear on the form.</Text></VStack>
+      <header className="section-heading-row"><VStack gap={1}><Heading level={2}>Positions</Heading><Text color="secondary">Set who can nominate for each position, whether it's required, and the short description shown on the form.</Text></VStack>
         <Button label="Create position" icon={<PlusIcon />} variant="primary" onClick={() => editPosition()} isDisabled={!canEdit} /></header>
       {!canEdit ? <Banner status="warning" title="Positions are locked" description="Unpublish or restore this nomination to edit its positions." container="section" /> : null}
       {positionRows.length ? <section className="table-surface" aria-label="Position list"><Table<PositionRow> data={positionRows} idKey="id" columns={[
         {key: 'name', header: 'Position', width: proportional(2)},
         {key: 'audience', header: 'Who can nominate', width: proportional(2)},
-        {key: 'about', header: 'About the role', width: proportional(3)},
-        {key: 'responsibilities', header: 'Responsibilities', width: proportional(3)},
+        {key: 'shortDescription', header: 'Short role description', width: proportional(3)},
+        {key: 'required', header: 'Required', width: pixel(110)},
         {key: 'id', header: 'Actions', width: pixel(190), renderCell: (row) => <HStack gap={2}><Button label={`Edit ${row.name}`} size="sm" variant="ghost" isDisabled={!canEdit} onClick={() => editPosition(nomination.positions.find((item) => item.id === row.id))}>Edit</Button><Button label={`Delete ${row.name}`} size="sm" variant="ghost" icon={<TrashIcon />} isDisabled={!canEdit} onClick={() => setRemoveTarget({type: 'delete-position', id: row.id, name: row.name})}>Remove</Button></HStack>},
       ]} /></section> : <Card padding={6}><EmptyState title="No positions yet" description="Create the first position to build the nomination form." /></Card>}
     </section> : null}
     {tab === 'nominees' ? <section id="nomination-nominees-panel" role="tabpanel" className="dashboard-section" aria-label="Nominee list">
-      <header className="section-heading-row"><VStack gap={1}><Heading level={2}>Nominees</Heading><Text color="secondary">Each submitted nomination appears as a separate row.</Text></VStack></header>
+      <header className="section-heading-row"><VStack gap={1}><Heading level={2}>Nominees</Heading><Text color="secondary">Each submitted nomination appears as a separate row.</Text></VStack>
+        <Button label="Download Nominees" href={`/api/admin/nominations/${nomination.id}/nominees/export`} variant="secondary" icon={<DownloadSimpleIcon />} /></header>
       {collectionError ? <Banner status="error" title="Nominees could not be loaded" description={collectionError} container="section" /> : null}
       {collectionLoading ? <Skeleton width="100%" height="var(--spacing-12)" index={0} /> : nomineeRows.length ? <section className="table-surface" aria-label="Nominees"><Table<NomineeRow> data={nomineeRows} idKey="id" rowIndexStart={(currentNomineesPage - 1) * PAGE_SIZE + 1} rowCount={nomineeTotal} columns={[
         {key: 'nomineeName', header: 'Name', width: proportional(2)},
@@ -369,12 +368,11 @@ export function NominationEditor({id}: {id: string}) {
       <Layout defaultHasDividers header={<DialogHeader title={editingPosition ? 'Edit position' : 'Create position'} onOpenChange={setPositionOpen} />}
         content={<LayoutContent><form id="nomination-position-form" onSubmit={(event) => void savePosition(event)}><VStack gap={4}>
           <TextInput label="Position name" value={positionName} onChange={(value) => {setPositionName(value); setPositionError('');}} isRequired width="100%" status={positionError ? {type: 'error', message: positionError} : undefined} />
+          <CheckboxInput label="Required field in nomination" description="Nominators must submit a nominee for this position before they can submit the form." value={required} onChange={setRequired} />
           <CheckboxList label="Who can nominate for this position" description="Leave all unchecked to make this position available to every age group." value={eligibleAgeGroups} onChange={(values) => setEligibleAgeGroups(values.filter(isNominationAgeGroup))} hasDividers>
             {NOMINATION_AGE_GROUPS.map((group) => <CheckboxListItem key={group.value} value={group.value} label={group.label} description={group.ages} />)}
           </CheckboxList>
-          <CheckboxInput label="Display about the role and responsibilities" description="These details will appear on the public nomination form." value={showRoleDetails} onChange={setShowRoleDetails} />
-          {showRoleDetails ? <FormLayout direction="vertical" defaultOptionality="optional"><TextArea label="About the role" value={aboutRole} onChange={setAboutRole} width="100%" />
-            <TextArea label="Responsibilities" description="Enter one responsibility per line." value={responsibilities} onChange={setResponsibilities} width="100%" /></FormLayout> : null}
+          <TextArea label="Short role description" description={`Shown to nominators on the public form · ${shortDescription.length}/80 characters`} value={shortDescription} onChange={setShortDescription} width="100%" isOptional />
         </VStack></form></LayoutContent>}
         footer={<LayoutFooter><HStack gap={3} justify="end"><Button label="Cancel" variant="ghost" onClick={() => setPositionOpen(false)} /><Button label="Save position" type="submit" form="nomination-position-form" variant="primary" isLoading={busy} /></HStack></LayoutFooter>} />
     </Dialog>

@@ -39,7 +39,7 @@ import {TextArea} from '@astryxdesign/core/TextArea';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {useToast} from '@astryxdesign/core/Toast';
 import {Typeahead, TypeaheadItem, type SearchSource, type SearchableItem} from '@astryxdesign/core/Typeahead';
-import {parseVoters} from '@/lib/csv';
+import {normalizeGender, parseVoters} from '@/lib/csv';
 import {ElectionEditorSkeleton} from '@/components/loading-states';
 import {fetchElection, fetchVoters, removeElection, saveElection, uploadCandidateImage} from '@/lib/api';
 import {
@@ -609,7 +609,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       firstName: record.first_name?.trim(),
       lastName: record.last_name?.trim(),
       name: `${record.first_name?.trim() ?? ''} ${record.last_name?.trim() ?? ''}`.trim(),
-      gender: record.gender?.trim(),
+      gender: record.gender?.trim() ? normalizeGender(record.gender) : undefined,
       age: Number(record.age),
       birthDate: new Date(record.birth_date).toISOString().slice(0, 10),
       ageGroup: record.age_group?.trim(),

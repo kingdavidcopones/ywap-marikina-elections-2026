@@ -1,5 +1,6 @@
 import 'server-only';
 import {createServerSupabaseClient} from '@/lib/supabase';
+import {normalizeGender} from '@/lib/csv';
 import {normalizeCandidateImageUrl, signCandidateImageUrls} from '@/lib/server/candidate-images';
 import type {ElectionEvent, ElectionResult, ElectionSummary, EligibleVoter, IndividualVoteRecord, Position} from '@/lib/election-data';
 
@@ -156,7 +157,7 @@ export async function getIndividualElectionResults(identifier: string): Promise<
   if (!submittedBallots.length) return [];
 
   const [voters, selections] = await Promise.all([
-    fetchAllRows((from, to) => supabase.from('eligible_voters').select('id, member_id, first_name, last_name')
+    fetchAllRows((from, to) => supabase.from('eligible_voters').select('id, member_id, first_name, last_name, age_group')
       .eq('election_id', election.id).order('id').range(from, to)),
     fetchAllRows((from, to) => supabase.from('ballot_selections')
       .select('id, anonymous_ballot_id, position_id, nominee_id, is_abstain, anonymous_ballots!inner(election_id)')
@@ -174,6 +175,7 @@ export async function getIndividualElectionResults(identifier: string): Promise<
       id: selection.id,
       memberId: voter?.member_id ?? 'Unknown',
       voterName: voter ? `${voter.first_name} ${voter.last_name}` : 'Unknown voter',
+      ageGroup: voter?.age_group ? groupFromDb[voter.age_group] ?? voter.age_group : 'Unknown',
       submittedAt: ballot?.submitted_at ?? '',
       position: position?.name ?? 'Unknown position',
       choice: selection.is_abstain ? 'Abstain' : position?.nominees.find((nominee) => nominee.id === selection.nominee_id)?.name ?? 'Unknown candidate',
@@ -218,7 +220,8 @@ export async function syncElection(election: ElectionEvent, voters?: EligibleVot
       })),
     })),
   };
-  const {error} = await supabase.rpc('sync_election', {p_election: normalizedElection, p_voters: voters ?? null});
+  const normalizedVoters = voters?.map((voter) => ({...voter, gender: voter.gender ? normalizeGender(voter.gender) : voter.gender}));
+  const {error} = await supabase.rpc('sync_election', {p_election: normalizedElection, p_voters: normalizedVoters ?? null});
   if (error) throw new Error(error.message);
   const saved = await getElection(election.id);
   if (!saved) throw new Error('The election was not saved.');

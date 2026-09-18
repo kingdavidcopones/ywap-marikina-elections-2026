@@ -76,7 +76,7 @@ function NomineeField({position, slug, value, error, onChange}: {position: Nomin
   return <VStack gap={3}>
     <Typeahead<NomineeItem>
       label={position.name}
-      description="Search Youth Records, or choose the name you entered."
+      description={position.shortDescription || undefined}
       placeholder="Search or enter a name"
       searchSource={searchSource}
       value={selected}
@@ -86,15 +86,10 @@ function NomineeField({position, slug, value, error, onChange}: {position: Nomin
       debounceMs={200}
       width="100%"
       size="lg"
-      isRequired
+      isRequired={position.required}
+      isOptional={!position.required}
       status={error ? {type: 'error', message: error} : undefined}
     />
-    {position.showRoleDetails && (position.aboutRole || position.responsibilities.length) ? <VStack gap={1}>
-      {position.aboutRole ? <Text color="secondary">{position.aboutRole}</Text> : null}
-      {position.responsibilities.length ? <section className="position-responsibilities" aria-label={`${position.name} responsibilities`}>
-        <Text type="supporting" weight="semibold">Responsibilities</Text><ul>{position.responsibilities.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
-      </section> : null}
-    </VStack> : null}
     {lookupError ? <Text type="supporting" color="secondary">Youth Record search is unavailable. You can still use the name you entered.</Text> : null}
   </VStack>;
 }
@@ -171,7 +166,8 @@ export function NominationForm({slug}: {slug: string}) {
     if (!visiblePositions.length) return;
     const invalid = Object.fromEntries(visiblePositions.flatMap((position) => {
       const length = choices[position.id]?.name.trim().length ?? 0;
-      return length >= 2 && length <= 160 ? [] : [[position.id, length < 2 ? 'Choose a name from the suggestions.' : 'Use at most 160 characters.']];
+      if (length === 0) return position.required ? [[position.id, 'Choose a name from the suggestions.']] : [];
+      return length >= 2 && length <= 160 ? [] : [[position.id, 'Use at most 160 characters.']];
     }));
     if (Object.keys(invalid).length) {setFieldErrors(invalid); return;}
     setStep(2);
@@ -181,7 +177,10 @@ export function NominationForm({slug}: {slug: string}) {
     if (!nomination || !ageGroup || !visiblePositions.length || submitting) return;
     setSubmitting(true); setError('');
     try {
-      const submittedChoices = Object.fromEntries(visiblePositions.map((position) => [position.id, choices[position.id]]));
+      const submittedChoices = Object.fromEntries(visiblePositions.flatMap((position) => {
+        const choice = choices[position.id];
+        return choice?.name.trim() ? [[position.id, choice]] : [];
+      }));
       const response = await fetch(`/api/nominations/${encodeURIComponent(slug)}/submit`, {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ageGroup, name: name.trim(), email: email.trim(), choices: submittedChoices}),
       });
@@ -208,7 +207,7 @@ export function NominationForm({slug}: {slug: string}) {
         <Card maxWidth={720} width="100%" padding={8} elevation="low" className="verification-card nomination-wizard-card">
           {availability === undefined || loading || (isActive && !nomination && !error) ? <VStack gap={5} aria-busy="true" aria-label="Loading nomination"><Skeleton width="70%" height="var(--spacing-8)" index={0} /><Skeleton width="100%" height="var(--spacing-4)" index={1} /><Skeleton width="100%" height="var(--spacing-12)" index={2} /></VStack> : nomination ? <VStack gap={6} width="100%" className="nomination-wizard-content">
             <VStack gap={2}><Heading level={1}>Submit your nomination</Heading><Text weight="semibold">{nomination.name}</Text>{nomination.description ? <Text color="secondary">{nomination.description}</Text> : null}</VStack>
-            <Stepper activeStep={step} density="compact" label="Nomination steps" horizontalOptions={{minimumStepWidth: 112, collapsedVariant: 'withLabel'}}>
+            <Stepper activeStep={step} density="compact" label="Nomination steps" horizontalOptions={{minimumStepWidth: 112, collapsedVariant: 'hiddenLabel'}}>
               <Step step={0} label="Verify" />
               <Step step={1} label="Nominate" />
               <Step step={2} label="Review" />
@@ -247,7 +246,7 @@ export function NominationForm({slug}: {slug: string}) {
                   {index ? <Divider /> : null}
                   <VStack gap={1} paddingBlockStart={index ? 4 : 0}>
                     <Text type="supporting" color="secondary">{position.name}</Text>
-                    <Text weight="semibold">{choices[position.id]?.name}</Text>
+                    <Text weight="semibold">{choices[position.id]?.name || 'Not nominated'}</Text>
                   </VStack>
                 </section>)}
               </VStack>

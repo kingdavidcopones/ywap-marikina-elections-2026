@@ -1,3 +1,19 @@
+const GENDER_ALIASES: Record<string, string> = {m: 'Male', male: 'Male', f: 'Female', female: 'Female'};
+
+export function normalizeGender(value: string) {
+  const trimmed = value.trim();
+  return GENDER_ALIASES[trimmed.toLocaleLowerCase('en')] ?? trimmed;
+}
+
+function toCsvValue(value: string | number) {
+  const text = String(value);
+  return /["\r\n,]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+export function buildCsv(headers: string[], rows: Array<Array<string | number>>) {
+  return [headers, ...rows].map((row) => row.map(toCsvValue).join(',')).join('\r\n') + '\r\n';
+}
+
 export function parseCsvLine(line: string) {
   const values: string[] = [];
   let current = '';

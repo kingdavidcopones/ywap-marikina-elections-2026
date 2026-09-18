@@ -4,6 +4,7 @@ import {useEffect, useState} from 'react';
 import {ArrowLeftIcon} from '@phosphor-icons/react/ArrowLeft';
 import {ArrowClockwiseIcon} from '@phosphor-icons/react/ArrowClockwise';
 import {ChartBarIcon} from '@phosphor-icons/react/ChartBar';
+import {DownloadSimpleIcon} from '@phosphor-icons/react/DownloadSimple';
 import {Avatar} from '@astryxdesign/core/Avatar';
 import {Badge} from '@astryxdesign/core/Badge';
 import {Button} from '@astryxdesign/core/Button';
@@ -12,6 +13,7 @@ import {Grid} from '@astryxdesign/core/Grid';
 import {Heading} from '@astryxdesign/core/Heading';
 import {HStack, VStack} from '@astryxdesign/core/Layout';
 import {Icon} from '@astryxdesign/core/Icon';
+import {Pagination} from '@astryxdesign/core/Pagination';
 import {ProgressBar} from '@astryxdesign/core/ProgressBar';
 import {Section} from '@astryxdesign/core/Section';
 import {Tab, TabList} from '@astryxdesign/core/TabList';
@@ -24,6 +26,7 @@ import {LiveResultSkeleton} from '@/components/loading-states';
 const submittedAtFormatter = new Intl.DateTimeFormat('en-PH', {
   dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila',
 });
+const INDIVIDUAL_PAGE_SIZE = 10;
 
 function statusVariant(status: ElectionEvent['status']) {
   if (status === 'Open' || status === 'Published') return 'success' as const;
@@ -41,12 +44,14 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
   const [individualRecords, setIndividualRecords] = useState<IndividualVoteRecord[]>([]);
   const [individualLoading, setIndividualLoading] = useState(false);
   const [individualError, setIndividualError] = useState<string | null>(null);
+  const [individualPage, setIndividualPage] = useState(1);
 
   useEffect(() => {
     setIsReady(false);
     setLoadError(null);
     setView('summary');
     setIndividualRecords([]);
+    setIndividualPage(1);
     void fetchResults(eventId).then((payload) => {
       setEvent(payload.election);
       setResults(payload.results);
@@ -217,6 +222,13 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
       )}
       </section> : (
         <section id="live-individual-panel" role="tabpanel" aria-label="Individual vote records">
+          <header className="section-heading-row">
+            <VStack gap={1}><Heading level={2}>Individual vote records</Heading><Text color="secondary">Each row is one voter's recorded choice for a position.</Text></VStack>
+            {individualRecords.length ? <HStack gap={2} align="center" wrap="wrap">
+              {individualRecords.length > INDIVIDUAL_PAGE_SIZE ? <Pagination page={individualPage} onChange={setIndividualPage} totalItems={individualRecords.length} pageSize={INDIVIDUAL_PAGE_SIZE} variant="compact" size="sm" label="Individual vote record pages" /> : null}
+              <Button label="Download responses" href={`/api/admin/elections/${event.id}/individual-results/export`} variant="secondary" icon={<DownloadSimpleIcon />} />
+            </HStack> : null}
+          </header>
           {individualLoading ? (
             <Text color="secondary">Loading individual vote records…</Text>
           ) : individualError ? (
@@ -224,7 +236,7 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
           ) : individualRecords.length ? (
             <section className="table-surface" aria-label="Individual vote records" tabIndex={0}>
               <Table<IndividualVoteRecord>
-                data={individualRecords.map((record) => ({
+                data={individualRecords.slice((individualPage - 1) * INDIVIDUAL_PAGE_SIZE, individualPage * INDIVIDUAL_PAGE_SIZE).map((record) => ({
                   ...record,
                   submittedAt: submittedAtFormatter.format(new Date(record.submittedAt)),
                 }))}
@@ -232,7 +244,7 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
                 density="compact"
                 dividers="rows"
                 columns={[
-                  {key: 'voterName', header: 'Voter', width: proportional(1)},
+                  {key: 'voterName', header: 'Voter', width: proportional(1), renderCell: (row) => <VStack gap={0}><Text weight="semibold">{row.voterName}</Text><Text type="supporting" color="secondary">{row.ageGroup}</Text></VStack>},
                   {key: 'memberId', header: 'Member ID', width: pixel(150)},
                   {key: 'position', header: 'Position', width: proportional(1)},
                   {key: 'choice', header: 'Vote', width: proportional(1)},

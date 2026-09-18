@@ -661,6 +661,15 @@ progress::-moz-progress-bar {
     padding: var(--spacing-6);
   }
 
+  .access-page.nomination-access-page {
+    padding-block: var(--spacing-6);
+    padding-inline: var(--spacing-2);
+  }
+
+  .verification-card.nomination-wizard-card {
+    padding-inline: var(--spacing-4);
+  }
+
   .voter-countdown {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
