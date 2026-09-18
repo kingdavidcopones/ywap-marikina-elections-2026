@@ -24,6 +24,10 @@ function validUuid(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function validEmail(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 async function allRows<T>(load: (from: number, to: number) => PromiseLike<{data: T[] | null; error: {message: string} | null}>): Promise<T[]> {
   const rows: T[] = [];
   for (let offset = 0; ; offset += 500) {
@@ -91,13 +95,15 @@ export async function getNominationNominees(id: string, page: number) {
   if (!Number.isInteger(page) || page < 1) throw new NominationError('Choose a valid page.');
   const from = (page - 1) * 10;
   const {data, count, error} = await createServerSupabaseClient().from('nomination_entries')
-    .select('id, nominee_name, position_id, youth_record_id, submitted_at', {count: 'exact'})
+    .select('id, nominee_name, position_id, youth_record_id, submitted_at, nomination_submissions(nominator_name, nominator_email)', {count: 'exact'})
     .eq('nomination_id', nomination.id).order('submitted_at', {ascending: false}).order('id').range(from, from + 9);
   check(error);
   const names = new Map(nomination.positions.map((position) => [position.id, position.name]));
-  return {nominees: (data ?? []).map((entry): NominationEntry => ({id: entry.id, nomineeName: entry.nominee_name,
+  return {nominees: (data ?? []).map((entry: any): NominationEntry => ({id: entry.id, nomineeName: entry.nominee_name,
     positionId: entry.position_id, positionName: names.get(entry.position_id) ?? 'Deleted position',
-    youthRecordId: entry.youth_record_id ?? undefined, submittedAt: entry.submitted_at})), total: count ?? 0};
+    youthRecordId: entry.youth_record_id ?? undefined, submittedAt: entry.submitted_at,
+    nominatorName: entry.nomination_submissions?.nominator_name ?? undefined,
+    nominatorEmail: entry.nomination_submissions?.nominator_email ?? undefined})), total: count ?? 0};
 }
 
 export async function getNominationYouthRecords(id: string, page: number) {
@@ -128,7 +134,9 @@ export async function updateNomination(id: string, action: any) {
   if (!current) throw new NominationError('Nomination not found.', 404);
   if (action.type === 'details') {
     if (typeof action.name !== 'string' || action.name.trim().length < 2 || action.name.trim().length > 160 || typeof action.description !== 'string' || action.description.length > 2000) throw new NominationError('Enter a nomination name of 2–160 characters and a description under 2,000 characters.');
-    check((await supabase.from('nominations').update({name: action.name.trim(), description: action.description.trim(), updated_at: new Date().toISOString()}).eq('id', id)).error);
+    const slug = typeof action.slug === 'string' ? action.slug.trim().toLocaleLowerCase('en').replace(/[^a-z0-9-]+/g, '-').replace(/(^-|-$)/g, '') : '';
+    if (!slug) throw new NominationError('Use at least one letter or number in the nomination link ending.');
+    check((await supabase.from('nominations').update({name: action.name.trim(), description: action.description.trim(), slug, updated_at: new Date().toISOString()}).eq('id', id)).error);
   } else if (action.type === 'status') {
     const status = action.status as NominationStatus;
     if (!['Draft', 'Scheduled', 'Published', 'Archived'].includes(status)) throw new NominationError('Invalid nomination status.');
@@ -230,10 +238,23 @@ export async function searchYouthRecords(identifier: string, term: string, admin
   return (data ?? []).map((row) => ({id: row.id, name: `${row.first_name} ${row.last_name}`, ageGroup: row.age_group}));
 }
 
-export async function submitNomination(identifier: string, ageGroup: unknown, choices: Record<string, {name: string; youthRecordId?: string}>) {
+export async function checkNominationEmailAvailable(identifier: string, email: unknown) {
+  const nomination = await getNomination(identifier);
+  if (!nomination) throw new NominationError('This nomination is not accepting responses.', 404);
+  if (!validEmail(email)) throw new NominationError('Enter a valid email address.');
+  const {count, error} = await createServerSupabaseClient().from('nomination_submissions')
+    .select('id', {count: 'exact', head: true})
+    .eq('nomination_id', nomination.id).eq('nominator_email_normalized', email.trim().toLocaleLowerCase('en'));
+  check(error);
+  return (count ?? 0) === 0;
+}
+
+export async function submitNomination(identifier: string, ageGroup: unknown, name: unknown, email: unknown, choices: Record<string, {name: string; youthRecordId?: string}>) {
   const nomination = await getNomination(identifier);
   if (!nomination) throw new NominationError('This nomination is not accepting responses.', 404);
   if (!isNominationAgeGroup(ageGroup)) throw new NominationError('Choose your age group before submitting.');
+  if (!validEmail(email)) throw new NominationError('Enter a valid email address.');
+  if (name !== undefined && (typeof name !== 'string' || name.trim().length > 160)) throw new NominationError('Use at most 160 characters for your name.');
   const positions = nomination.positions.filter((position) => positionVisibleToAgeGroup(position, ageGroup));
   if (!choices || typeof choices !== 'object' || Array.isArray(choices) || Object.keys(choices).length !== positions.length || !positions.length
     || Object.keys(choices).some((id) => !positions.some((position) => position.id === id))) throw new NominationError('Complete every position available to your age group.');
@@ -241,11 +262,13 @@ export async function submitNomination(identifier: string, ageGroup: unknown, ch
     const choice = choices[position.id];
     if (!choice || typeof choice !== 'object' || Array.isArray(choice) || typeof choice.name !== 'string' || choice.name.trim().length < 2 || choice.name.trim().length > 160 || (choice.youthRecordId !== undefined && !validUuid(choice.youthRecordId))) throw new NominationError(`Enter a valid nominee for ${position.name}.`);
   }
-  const {data, error} = await createServerSupabaseClient().rpc('submit_nomination', {p_nomination_id: nomination.id, p_age_group: ageGroup, p_choices: choices});
+  const {data, error} = await createServerSupabaseClient().rpc('submit_nomination', {p_nomination_id: nomination.id, p_age_group: ageGroup,
+    p_nominator_name: typeof name === 'string' && name.trim() ? name.trim() : null, p_nominator_email: (email as string).trim(), p_choices: choices});
   if (error?.code === 'PGRST202') {
     console.error('The nomination age-group database migration has not been applied.', error);
     throw new NominationError('We couldn’t record your nominations right now. Please contact the election committee.', 503);
   }
+  if (error?.code === '23505') throw new NominationError('A nomination has already been submitted with this email address.', 409);
   check(error);
   return data as string;
 }

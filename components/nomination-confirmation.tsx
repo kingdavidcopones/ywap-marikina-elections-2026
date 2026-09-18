@@ -19,7 +19,7 @@ export function NominationConfirmation({nominationName, submittedAt}: {nominatio
           <VStack gap={6}>
             <Text className="confirmation-mark" aria-hidden="true">✓</Text>
             <VStack gap={2}>
-              <Heading level={1}>Your nomination is in</Heading>
+              <Heading level={1}>Nomination submitted!</Heading>
               <Text color="secondary" as="p">Thank you for taking part in {nominationName}.</Text>
             </VStack>
             <dl className="confirmation-details">

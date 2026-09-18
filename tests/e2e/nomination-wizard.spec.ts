@@ -6,7 +6,7 @@ const positions = [
 ];
 
 test('nomination wizard reviews choices, confirms submission, and keeps one card width', async ({page}) => {
-  let submitted: {ageGroup: string; choices: Record<string, {name: string; youthRecordId?: string}>} | null = null;
+  let submitted: {ageGroup: string; name: string; email: string; choices: Record<string, {name: string; youthRecordId?: string}>} | null = null;
   let submissionAttempts = 0;
   await page.route('**/api/nominations/wizard-test/availability', async (route) => {
     await route.fulfill({json: {availability: {name: 'Youth Council', status: 'Published', opensAt: '', closesAt: ''}}});
@@ -18,6 +18,9 @@ test('nomination wizard reviews choices, confirms submission, and keeps one card
     const query = new URL(route.request().url()).searchParams.get('q') ?? '';
     await route.fulfill({json: {records: query.toLocaleLowerCase('en').includes('alex')
       ? [{id: '00000000-0000-4000-8000-000000000001', name: 'Alex Test'}] : []}});
+  });
+  await page.route('**/api/nominations/wizard-test/check-email**', async (route) => {
+    await route.fulfill({json: {available: true}});
   });
   await page.route('**/api/nominations/wizard-test/submit', async (route) => {
     submitted = route.request().postDataJSON();
@@ -31,13 +34,19 @@ test('nomination wizard reviews choices, confirms submission, and keeps one card
 
   await page.goto('/nominate/wizard-test');
   await expect(page.getByRole('heading', {name: 'Submit your nomination'})).toBeVisible();
-  await expect(page.getByRole('heading', {name: 'Choose your age group'})).toBeVisible();
+  await expect(page.getByRole('heading', {name: 'Verify your details'})).toBeVisible();
+  await expect(page.getByText('Choose your age group', {exact: true})).toBeVisible();
+  await expect(page.getByPlaceholder('Enter your name')).toBeVisible();
+  await expect(page.getByPlaceholder('example@email.com')).toBeVisible();
   await expect(page.getByText('Ages 13 to 17')).toBeVisible();
   await expect(page.getByText('Ages 18 to 23')).toBeVisible();
   await expect(page.getByText('Ages 24 to 39')).toBeVisible();
   const wizard = page.locator('.nomination-wizard-card');
   const firstWidth = (await wizard.boundingBox())?.width;
   expect(firstWidth).toBeGreaterThan(0);
+  await page.getByRole('button', {name: 'Continue to nominations'}).click();
+  await expect(page.getByText('Enter a valid email address.')).toBeVisible();
+  await page.getByRole('textbox', {name: 'Email'}).fill('nominator@example.com');
   await page.getByRole('button', {name: 'Continue to nominations'}).click();
   await expect(page.getByText('Select your age group to continue.')).toBeVisible();
 
@@ -85,9 +94,9 @@ test('nomination wizard reviews choices, confirms submission, and keeps one card
   await expect(page.getByRole('heading', {name: 'Review your nominations'})).toBeVisible();
   await page.getByRole('button', {name: 'Submit'}).click();
   await page.getByRole('button', {name: 'Confirm submission'}).click();
-  await expect(page.getByRole('heading', {name: 'Your nomination is in'})).toBeVisible();
+  await expect(page.getByRole('heading', {name: 'Nomination submitted!'})).toBeVisible();
   await expect(page.locator('.confirmation-card')).toBeVisible();
-  expect(submitted).toEqual({ageGroup: 'teens', choices: {
+  expect(submitted).toEqual({ageGroup: 'teens', name: '', email: 'nominator@example.com', choices: {
     'teen-position': {name: 'Alex Test', youthRecordId: '00000000-0000-4000-8000-000000000001'},
     'open-position': {name: 'Jordan Test'},
   }});

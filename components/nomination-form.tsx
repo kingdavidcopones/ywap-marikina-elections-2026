@@ -13,6 +13,7 @@ import {HStack, Layout, LayoutContent, LayoutFooter, VStack} from '@astryxdesign
 import {Section} from '@astryxdesign/core/Section';
 import {Step, Stepper} from '@astryxdesign/core/Stepper';
 import {Text} from '@astryxdesign/core/Text';
+import {TextInput} from '@astryxdesign/core/TextInput';
 import {Skeleton} from '@astryxdesign/core/Skeleton';
 import {SelectableCard} from '@astryxdesign/core/SelectableCard';
 import {Typeahead, TypeaheadItem, type SearchSource, type SearchableItem} from '@astryxdesign/core/Typeahead';
@@ -104,8 +105,12 @@ export function NominationForm({slug}: {slug: string}) {
   const [now, setNow] = useState(() => Date.now());
   const [choices, setChoices] = useState<Record<string, Choice>>({});
   const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [ageGroup, setAgeGroup] = useState<NominationAgeGroup | null>(null);
   const [ageGroupError, setAgeGroupError] = useState('');
+  const [verifyError, setVerifyError] = useState('');
+  const [checkingEmail, setCheckingEmail] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -144,6 +149,24 @@ export function NominationForm({slug}: {slug: string}) {
     return () => {active = false;};
   }, [slug, isActive]);
 
+  async function continueFromVerify() {
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    if (trimmedName.length > 160) { setVerifyError('Use at most 160 characters for your name.'); return; }
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) { setVerifyError('Enter a valid email address.'); return; }
+    if (!ageGroup) { setAgeGroupError('Select your age group to continue.'); return; }
+    setVerifyError(''); setAgeGroupError(''); setCheckingEmail(true);
+    try {
+      const response = await fetch(`/api/nominations/${encodeURIComponent(slug)}/check-email?email=${encodeURIComponent(trimmedEmail)}`, {cache: 'no-store'});
+      const body = await response.json() as {available?: boolean; message?: string};
+      if (!response.ok) throw new Error(body.message ?? 'We couldn’t check your email right now.');
+      if (!body.available) { setVerifyError('A nomination has already been submitted with this email address.'); return; }
+      setStep(1);
+    } catch (cause) {
+      setVerifyError(cause instanceof Error ? cause.message : 'We couldn’t check your email right now.');
+    } finally { setCheckingEmail(false); }
+  }
+
   function reviewChoices() {
     if (!visiblePositions.length) return;
     const invalid = Object.fromEntries(visiblePositions.flatMap((position) => {
@@ -160,7 +183,7 @@ export function NominationForm({slug}: {slug: string}) {
     try {
       const submittedChoices = Object.fromEntries(visiblePositions.map((position) => [position.id, choices[position.id]]));
       const response = await fetch(`/api/nominations/${encodeURIComponent(slug)}/submit`, {
-        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ageGroup, choices: submittedChoices}),
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ageGroup, name: name.trim(), email: email.trim(), choices: submittedChoices}),
       });
       const body = await response.json() as {message?: string; submittedAt?: string};
       if (!response.ok) throw new Error(body.message ?? 'Your nomination could not be submitted.');
@@ -186,20 +209,25 @@ export function NominationForm({slug}: {slug: string}) {
           {availability === undefined || loading || (isActive && !nomination && !error) ? <VStack gap={5} aria-busy="true" aria-label="Loading nomination"><Skeleton width="70%" height="var(--spacing-8)" index={0} /><Skeleton width="100%" height="var(--spacing-4)" index={1} /><Skeleton width="100%" height="var(--spacing-12)" index={2} /></VStack> : nomination ? <VStack gap={6} width="100%" className="nomination-wizard-content">
             <VStack gap={2}><Heading level={1}>Submit your nomination</Heading><Text weight="semibold">{nomination.name}</Text>{nomination.description ? <Text color="secondary">{nomination.description}</Text> : null}</VStack>
             <Stepper activeStep={step} density="compact" label="Nomination steps" horizontalOptions={{minimumStepWidth: 112, collapsedVariant: 'withLabel'}}>
-              <Step step={0} label="Age group" />
+              <Step step={0} label="Verify" />
               <Step step={1} label="Nominate" />
               <Step step={2} label="Review" />
             </Stepper>
             <Divider />
             {step === 0 ? <VStack gap={5}>
-              <VStack gap={1}><Text type="supporting" color="secondary">Step 1 of 3</Text><Heading level={2}>Choose your age group</Heading><Text color="secondary">Your age group determines which positions you can nominate for.</Text></VStack>
+              <VStack gap={1}><Text type="supporting" color="secondary">Step 1 of 3</Text><Heading level={2}>Verify your details</Heading><Text color="secondary">Tell us who you are, then choose your age group. Your age group determines which positions you can nominate for.</Text></VStack>
+              <VStack gap={4} width="100%">
+                <TextInput label="Name" placeholder="Enter your name" value={name} onChange={(value) => {setName(value); setVerifyError('');}} width="100%" isOptional />
+                <TextInput label="Email" type="email" placeholder="example@email.com" value={email} onChange={(value) => {setEmail(value); setVerifyError('');}} width="100%" isRequired />
+              </VStack>
               <section aria-label="Age groups"><VStack gap={3} width="100%">
+                <Text weight="semibold">Choose your age group</Text>
                 {NOMINATION_AGE_GROUPS.map((group) => <SelectableCard key={group.value} label={`${group.label}, ${group.ages}`} isSelected={ageGroup === group.value} onChange={() => {setAgeGroup(group.value); setAgeGroupError('');}} width="100%" padding={5}>
                   <VStack gap={1}><Text weight="semibold">{group.label}</Text><Text color="secondary">{group.ages}</Text></VStack>
                 </SelectableCard>)}
               </VStack></section>
-              {ageGroupError ? <Banner status="error" title="Age group required" description={ageGroupError} container="section" /> : null}
-              <Button label="Continue to nominations" variant="primary" size="lg" width="100%" onClick={() => {if (!ageGroup) {setAgeGroupError('Select your age group to continue.'); return;} setStep(1);}} />
+              {(verifyError || ageGroupError) ? <Banner status="error" title="Check your details" description={verifyError || ageGroupError} container="section" /> : null}
+              <Button label="Continue to nominations" variant="primary" size="lg" width="100%" onClick={() => void continueFromVerify()} isLoading={checkingEmail} />
             </VStack> : step === 1 ? <VStack gap={6} width="100%">
               <VStack gap={1}><Text type="supporting" color="secondary">Step 2 of 3 · {selectedAgeGroup?.label}</Text><Heading level={2}>Nominate</Heading>{visiblePositions.length ? <Text color="secondary">Choose or enter a nominee for each position.</Text> : null}</VStack>
               {visiblePositions.length ? visiblePositions.map((position, index) => <VStack key={position.id} gap={5} width="100%">

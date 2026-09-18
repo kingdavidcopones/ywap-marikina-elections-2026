@@ -9,7 +9,7 @@ A responsive election platform built with Next.js, Astryx Design, Supabase, and 
 - Voter verification creates a signed, HTTP-only session. Participation and anonymous selections are stored separately.
 - Ballots are validated and submitted in one PostgreSQL transaction, including duplicate-vote prevention.
 - Admin access uses an environment-backed credential and a signed, HTTP-only session.
-- Nominations have separate Youth Records, paged admin tables, and atomic public submissions. Anyone with a published form link can nominate, including more than once.
+- Nominations have separate Youth Records, paged admin tables, and atomic public submissions. Anyone with a published form link can nominate by verifying with an email address; a given email can only nominate once per nomination.
 - There is no application seed data. The CSV under `tests/fixtures/` is used only by the end-to-end test.
 
 ## Environment
@@ -24,7 +24,7 @@ ADMIN_PASSWORD=use-a-strong-password
 SESSION_SECRET=use-a-long-random-secret
 ```
 
-Apply the SQL files in `supabase/migrations/` in filename order to the Supabase project, including `202609170003_nominations.sql` and `202609180001_nomination_age_groups.sql` for the nomination feature. Apply the new age-group migration before deploying the updated nomination form. Do not expose `SUPABASE_SERVICE_ROLE_KEY` as a `NEXT_PUBLIC_` variable.
+Apply the SQL files in `supabase/migrations/` in filename order to the Supabase project, including `202609170003_nominations.sql`, `202609180001_nomination_age_groups.sql`, and `202609180002_nomination_verification.sql` for the nomination feature. Apply the new age-group migration before deploying the updated nomination form. `202609180002_nomination_verification.sql` truncates existing nomination submissions and entries, since prior test rows predate the nominator email field — apply it only once you're fine losing that test data. Do not expose `SUPABASE_SERVICE_ROLE_KEY` as a `NEXT_PUBLIC_` variable.
 
 ## Run and verify
 

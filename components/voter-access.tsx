@@ -95,7 +95,7 @@ export function VoterAccess({ballotSlug, onVerified}: {ballotSlug?: string; onVe
                     label="YWAP Marikina Member ID"
                     value={memberId}
                     onChange={setMemberId}
-                    placeholder="YWAP-02139"
+                    placeholder="YWAP-00000"
                     autoComplete="off"
                     isRequired
                     size="lg"

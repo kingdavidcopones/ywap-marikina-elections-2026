@@ -39,7 +39,7 @@ import {normalizeCsvBirthDate, parseVoters} from '@/lib/csv';
 import {NOMINATION_AGE_GROUPS, isNominationAgeGroup, type Nomination, type NominationAgeGroup, type NominationEntry, type NominationPosition, type NominationStatus, type YouthRecord} from '@/lib/nomination-data';
 
 interface PositionRow extends Record<string, unknown> { id: string; name: string; audience: string; about: string; responsibilities: string; }
-interface NomineeRow extends Record<string, unknown> { id: string; nomineeName: string; positionName: string; submittedAt: string; }
+interface NomineeRow extends Record<string, unknown> { id: string; nomineeName: string; positionName: string; nominatedBy: string; submittedAt: string; }
 interface YouthRow extends Record<string, unknown> { id: string; memberId: string; name: string; ageGroup: string; importedAt: string; }
 type UploadRecord = Omit<YouthRecord, 'id' | 'name' | 'importedAt'>;
 type RemoveTarget = {type: 'delete-position' | 'delete-nominee'; id: string; name: string};
@@ -92,6 +92,7 @@ export function NominationEditor({id}: {id: string}) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [slug, setSlug] = useState('');
   const [positionOpen, setPositionOpen] = useState(false);
   const [editingPosition, setEditingPosition] = useState<NominationPosition | null>(null);
   const [positionName, setPositionName] = useState('');
@@ -140,7 +141,7 @@ export function NominationEditor({id}: {id: string}) {
     return () => {active = false;};
   }, [id, nomination?.id, tab, nomineesPage, youthPage, refreshKey]);
 
-  async function mutate(action: Record<string, unknown>) {
+  async function mutate(action: Record<string, unknown>, removedName?: string) {
     if (!nomination) return false;
     setBusy(true);
     try {
@@ -148,10 +149,16 @@ export function NominationEditor({id}: {id: string}) {
       setNomination(updated);
       setRefreshKey((value) => value + 1);
       if (action.type === 'delete-nominee' && nomineesPage > Math.max(1, Math.ceil(updated.nomineeCount / PAGE_SIZE))) setNomineesPage(Math.max(1, Math.ceil(updated.nomineeCount / PAGE_SIZE)));
-      toast({body: action.type === 'status' ? `Nomination ${String(action.status).toLowerCase()}.` : action.type === 'position' ? 'Position saved.' : action.type === 'delete-position' ? 'Position removed.' : action.type === 'delete-nominee' ? 'Nominee removed.' : action.type === 'details' ? 'Nomination details saved.' : 'Youth Records saved.'});
+      if (action.type === 'delete-nominee') toast({body: `${removedName ?? 'Nominee'} has been removed`, type: 'error', isAutoHide: true});
+      else toast({body: action.type === 'status' ? `Nomination ${String(action.status).toLowerCase()}.` : action.type === 'position' ? 'Position saved.' : action.type === 'delete-position' ? 'Position removed.' : action.type === 'details' ? 'Nomination details saved.' : 'Youth Records saved.'});
       return true;
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'The change could not be saved.';
+      if (action.type === 'delete-nominee' && message === 'Nominee not found.') {
+        void fetchAdminNomination(id).then(setNomination).catch(() => {});
+        setRefreshKey((value) => value + 1);
+        return true;
+      }
       toast({body: message, type: 'error'});
       return false;
     } finally { setBusy(false); }
@@ -159,7 +166,7 @@ export function NominationEditor({id}: {id: string}) {
 
   function editDetails() {
     if (!nomination) return;
-    setName(nomination.name); setDescription(nomination.description); setDetailsError(''); setDetailsOpen(true);
+    setName(nomination.name); setDescription(nomination.description); setSlug(nomination.slug); setDetailsError(''); setDetailsOpen(true);
   }
   function editPosition(position?: NominationPosition) {
     setEditingPosition(position ?? null);
@@ -232,7 +239,7 @@ export function NominationEditor({id}: {id: string}) {
     about: position.showRoleDetails ? position.aboutRole || 'Shown, no description' : 'Hidden',
     responsibilities: position.showRoleDetails ? position.responsibilities.join(' · ') || 'None added' : 'Hidden'}));
   const nomineeRows: NomineeRow[] = nomineeEntries.map((entry: NominationEntry) => ({id: entry.id, nomineeName: entry.nomineeName,
-    positionName: entry.positionName, submittedAt: entry.submittedAt}));
+    positionName: entry.positionName, nominatedBy: entry.nominatorName || entry.nominatorEmail || '—', submittedAt: entry.submittedAt}));
   const youthRows: YouthRow[] = youthRecords.map((record) => ({id: record.id, memberId: record.memberId, name: record.name,
     ageGroup: record.ageGroup, importedAt: record.importedAt}));
   const currentNomineesPage = nomineesPage;
@@ -298,6 +305,7 @@ export function NominationEditor({id}: {id: string}) {
       {collectionLoading ? <Skeleton width="100%" height="var(--spacing-12)" index={0} /> : nomineeRows.length ? <section className="table-surface" aria-label="Nominees"><Table<NomineeRow> data={nomineeRows} idKey="id" rowIndexStart={(currentNomineesPage - 1) * PAGE_SIZE + 1} rowCount={nomineeTotal} columns={[
         {key: 'nomineeName', header: 'Name', width: proportional(2)},
         {key: 'positionName', header: 'Position nominated', width: proportional(2)},
+        {key: 'nominatedBy', header: 'Nominated by', width: proportional(2)},
         {key: 'submittedAt', header: 'Submitted at', width: proportional(2), renderCell: (row) => formatDate(row.submittedAt)},
         {key: 'id', header: 'Action', width: pixel(120), renderCell: (row) => <Button label={`Remove ${row.nomineeName}`} size="sm" variant="ghost" icon={<TrashIcon />} onClick={() => setRemoveTarget({type: 'delete-nominee', id: row.id, name: row.nomineeName})}>Remove</Button>},
       ]} />{nomineeTotal > PAGE_SIZE ? <footer className="table-pagination"><Pagination page={currentNomineesPage} onChange={setNomineesPage} totalItems={nomineeTotal} pageSize={PAGE_SIZE} variant="pages" size="sm" label="Nominee pages" /></footer> : null}</section> : !collectionError ? <Card padding={6}><EmptyState title="No nominees yet" description="Submitted nominations will appear here." /></Card> : null}
@@ -343,9 +351,17 @@ export function NominationEditor({id}: {id: string}) {
 
     <Dialog isOpen={detailsOpen} onOpenChange={setDetailsOpen} purpose="form" width={560}>
       <Layout defaultHasDividers header={<DialogHeader title="Edit nomination details" onOpenChange={setDetailsOpen} />}
-        content={<LayoutContent><form id="nomination-details-form" onSubmit={(event) => {event.preventDefault(); if (name.trim().length < 2 || name.trim().length > 160 || description.length > 2000) {setDetailsError('Use 2–160 characters for the name and up to 2,000 for the description.'); return;} setDetailsError(''); void mutate({type: 'details', name, description}).then((saved) => {if (saved) setDetailsOpen(false);});}}><FormLayout direction="vertical" defaultOptionality="required">
+        content={<LayoutContent><form id="nomination-details-form" onSubmit={(event) => {
+          event.preventDefault();
+          if (name.trim().length < 2 || name.trim().length > 160 || description.length > 2000) {setDetailsError('Use 2–160 characters for the name and up to 2,000 for the description.'); return;}
+          const nextSlug = slug.trim().toLocaleLowerCase('en').replace(/[^a-z0-9-]+/g, '-').replace(/(^-|-$)/g, '');
+          if (!nextSlug) {setDetailsError('Use at least one letter or number in the nomination link ending.'); return;}
+          setDetailsError('');
+          void mutate({type: 'details', name, description, slug: nextSlug}).then((saved) => {if (saved) setDetailsOpen(false);});
+        }}><FormLayout direction="vertical" defaultOptionality="required">
           <TextInput label="Nomination name" value={name} onChange={(value) => {setName(value); setDetailsError('');}} width="100%" isRequired status={detailsError ? {type: 'error', message: detailsError} : undefined} />
           <TextArea label="Description" value={description} onChange={(value) => {setDescription(value); setDetailsError('');}} width="100%" isOptional />
+          <TextInput label="Nomination link ending" description="This appears after /nominate/ in the link shared with nominators." value={slug} onChange={(value) => {setSlug(value); setDetailsError('');}} width="100%" isRequired />
         </FormLayout></form></LayoutContent>}
         footer={<LayoutFooter><HStack gap={3} justify="end"><Button label="Cancel" variant="ghost" onClick={() => setDetailsOpen(false)} /><Button label="Save details" type="submit" form="nomination-details-form" variant="primary" isLoading={busy} /></HStack></LayoutFooter>} />
     </Dialog>
@@ -377,7 +393,7 @@ export function NominationEditor({id}: {id: string}) {
     </Dialog>
     <AlertDialog isOpen={Boolean(removeTarget)} onOpenChange={(open) => {if (!open) setRemoveTarget(null);}} title={`Remove ${removeTarget?.name ?? 'item'}?`}
       description={removeTarget?.type === 'delete-position' ? 'This also removes all submitted nominees for this position.' : 'This removes this nominee row from the nomination.'} actionLabel="Remove" actionVariant="destructive"
-      onAction={() => {if (!removeTarget) return; void mutate({type: removeTarget.type, [removeTarget.type === 'delete-position' ? 'positionId' : 'nomineeId']: removeTarget.id}).then((saved) => {if (saved) setRemoveTarget(null);});}} />
+      onAction={() => {if (!removeTarget) return; void mutate({type: removeTarget.type, [removeTarget.type === 'delete-position' ? 'positionId' : 'nomineeId']: removeTarget.id}, removeTarget.name).then((saved) => {if (saved) setRemoveTarget(null);});}} />
     <AlertDialog isOpen={replaceYouthOpen} onOpenChange={setReplaceYouthOpen} title="Replace all Youth Records?"
       description="Choose a CSV to replace the current list. Names already submitted as nominees will remain in the Nominees table."
       actionLabel="Choose replacement CSV" onAction={() => {setReplaceYouthOpen(false); replaceYouthInputRef.current?.click();}} />

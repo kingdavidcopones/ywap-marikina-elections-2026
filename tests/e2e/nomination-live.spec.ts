@@ -117,14 +117,16 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
     expect(found.status()).toBe(200);
     const alex = (await found.json()).records[0];
     expect(alex.name).toBe('Alex Test');
-    const submit = (choices: Record<string, unknown>, ageGroup = 'teens') => publicRequest.post(api(`/api/nominations/${slug}/submit`), {data: {ageGroup, choices}});
+    const submit = (choices: Record<string, unknown>, ageGroup = 'teens', email = `qa-nominator-1-${stamp}@example.com`, name = 'QA Nominator') =>
+      publicRequest.post(api(`/api/nominations/${slug}/submit`), {data: {ageGroup, name, email, choices}});
     expect((await submit({[chairId]: {name: 'Alex Test'}, [secretaryId]: {name: 'Taylor Example'}}, 'invalid')).status()).toBe(400);
     expect((await submit({[chairId]: {name: 'A'}})).status()).toBe(400);
     expect((await submit({[chairId]: {name: 'Alex Test'}, [secretaryId]: {name: 'Taylor Example'}}, 'young_people')).status()).toBe(400);
     expect((await submit({[chairId]: {name: 'Alex Test', youthRecordId: crypto.randomUUID()}, [secretaryId]: {name: 'Taylor Example'}})).status()).toBe(400);
     const choices = {[chairId]: {name: 'Alex Test', youthRecordId: alex.id}, [secretaryId]: {name: 'Taylor Example'}};
     expect((await submit(choices)).status()).toBe(201);
-    expect((await submit(choices)).status()).toBe(201); // Repeated nominations are allowed.
+    expect((await submit(choices)).status()).toBe(409); // A second nomination with the same email is blocked.
+    expect((await submit(choices, 'teens', `qa-nominator-2-${stamp}@example.com`)).status()).toBe(201); // A different nominator may still submit.
     const nomineesResponse = await request.get(api(`/api/admin/nominations/${id}/nominees?page=1`));
     expect(nomineesResponse.status()).toBe(200);
     const nominees = await nomineesResponse.json();
@@ -157,6 +159,7 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
     try {
       await publicPage.goto(api(`/nominate/${slug}`));
       await expect(publicPage.getByRole('heading', {name: 'Submit your nomination'})).toBeVisible();
+      await publicPage.getByRole('textbox', {name: 'Email'}).fill(`qa-nominator-3-${stamp}@example.com`);
       await publicPage.getByRole('button', {name: 'Continue to nominations'}).click();
       await expect(publicPage.getByText('Select your age group to continue.')).toBeVisible();
       await publicPage.getByText('Teens', {exact: true}).click();
@@ -171,12 +174,13 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
       await publicPage.getByRole('button', {name: 'Submit'}).click();
       await expect(publicPage.getByRole('dialog', {name: 'Submit your nominations?'})).toBeVisible();
       await publicPage.getByRole('button', {name: 'Confirm submission'}).click();
-      await expect(publicPage.getByRole('heading', {name: 'Your nomination is in'})).toBeVisible();
+      await expect(publicPage.getByRole('heading', {name: 'Nomination submitted!'})).toBeVisible();
     } finally {await publicPage.close();}
 
     const youngPeoplePage = await browser.newPage();
     try {
       await youngPeoplePage.goto(api(`/nominate/${slug}`));
+      await youngPeoplePage.getByRole('textbox', {name: 'Email'}).fill(`qa-nominator-4-${stamp}@example.com`);
       await youngPeoplePage.getByText('Young People', {exact: true}).click();
       await youngPeoplePage.getByRole('button', {name: 'Continue to nominations'}).click();
       await expect(youngPeoplePage.getByRole('combobox', {name: 'Secretary'})).toBeVisible();
