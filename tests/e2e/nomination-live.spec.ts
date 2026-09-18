@@ -2,6 +2,7 @@ import {expect, test} from '@playwright/test';
 
 test('nomination API and public flow', async ({page, browser, request: publicRequest}) => {
   test.skip(process.env.NOMINATION_LIVE_TEST !== '1', 'Run explicitly against the configured Supabase project.');
+  test.setTimeout(90_000); // dozens of real round-trips to the remote Supabase project routinely exceed the 30s default.
   const origin = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000';
   const request = page.context().request;
   const api = (path: string) => `${origin}${path}`;

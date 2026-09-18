@@ -221,8 +221,8 @@ export function AdminShell({children}: {children: React.ReactNode}) {
                   <Image
                     src="/brand/ywap-marikina-admin-logo-word.svg"
                     alt="YWAP Marikina Elections Admin"
-                    width={152}
-                    height={44}
+                    width={137}
+                    height={40}
                     priority
                   />
                 ) : null}
