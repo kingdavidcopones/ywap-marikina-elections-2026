@@ -161,14 +161,17 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
       await expect(publicPage.getByText('Select your age group to continue.')).toBeVisible();
       await publicPage.getByText('Teens', {exact: true}).click();
       await publicPage.getByRole('button', {name: 'Continue to nominations'}).click();
-      await publicPage.getByRole('button', {name: 'Submit nomination'}).click();
-      await expect(publicPage.getByText('Enter at least 2 characters.').first()).toBeVisible();
-      await expect(publicPage.getByPlaceholder('Nominate for Chairperson')).toBeVisible();
-      await publicPage.getByRole('textbox', {name: 'Chairperson'}).fill('Alex');
-      await publicPage.getByRole('button', {name: 'Choose Alex Test'}).click();
-      await publicPage.getByRole('textbox', {name: 'Secretary'}).fill('Taylor Example');
-      await publicPage.getByRole('button', {name: 'Submit nomination'}).click();
-      await expect(publicPage.getByRole('heading', {name: 'Nomination submitted'})).toBeVisible();
+      await publicPage.getByRole('button', {name: 'Review'}).click();
+      await expect(publicPage.getByText('Choose a name from the suggestions.').first()).toBeVisible();
+      await publicPage.getByRole('combobox', {name: 'Chairperson'}).fill('Alex');
+      await publicPage.getByRole('option', {name: 'Alex Test'}).click();
+      await publicPage.getByRole('combobox', {name: 'Secretary'}).fill('Taylor Example');
+      await publicPage.getByRole('option', {name: 'Taylor Example'}).click();
+      await publicPage.getByRole('button', {name: 'Review'}).click();
+      await publicPage.getByRole('button', {name: 'Submit'}).click();
+      await expect(publicPage.getByRole('dialog', {name: 'Submit your nominations?'})).toBeVisible();
+      await publicPage.getByRole('button', {name: 'Confirm submission'}).click();
+      await expect(publicPage.getByRole('heading', {name: 'Your nomination is in'})).toBeVisible();
     } finally {await publicPage.close();}
 
     const youngPeoplePage = await browser.newPage();
@@ -176,8 +179,8 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
       await youngPeoplePage.goto(api(`/nominate/${slug}`));
       await youngPeoplePage.getByText('Young People', {exact: true}).click();
       await youngPeoplePage.getByRole('button', {name: 'Continue to nominations'}).click();
-      await expect(youngPeoplePage.getByRole('textbox', {name: 'Secretary'})).toBeVisible();
-      await expect(youngPeoplePage.getByRole('textbox', {name: 'Chairperson'})).toHaveCount(0);
+      await expect(youngPeoplePage.getByRole('combobox', {name: 'Secretary'})).toBeVisible();
+      await expect(youngPeoplePage.getByRole('combobox', {name: 'Chairperson'})).toHaveCount(0);
     } finally {await youngPeoplePage.close();}
 
     expect((await patch({type: 'delete-nominee', nomineeId: nominees.nominees[0].id})).status()).toBe(200);

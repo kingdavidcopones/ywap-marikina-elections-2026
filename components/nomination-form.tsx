@@ -1,62 +1,100 @@
 'use client';
 
-import {useEffect, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import Image from 'next/image';
 import {AppShell} from '@astryxdesign/core/AppShell';
 import {Banner} from '@astryxdesign/core/Banner';
 import {Button} from '@astryxdesign/core/Button';
 import {Card} from '@astryxdesign/core/Card';
+import {Dialog, DialogHeader} from '@astryxdesign/core/Dialog';
 import {Divider} from '@astryxdesign/core/Divider';
 import {Heading} from '@astryxdesign/core/Heading';
-import {VStack} from '@astryxdesign/core/Layout';
+import {HStack, Layout, LayoutContent, LayoutFooter, VStack} from '@astryxdesign/core/Layout';
 import {Section} from '@astryxdesign/core/Section';
+import {Step, Stepper} from '@astryxdesign/core/Stepper';
 import {Text} from '@astryxdesign/core/Text';
-import {TextInput} from '@astryxdesign/core/TextInput';
 import {Skeleton} from '@astryxdesign/core/Skeleton';
 import {SelectableCard} from '@astryxdesign/core/SelectableCard';
+import {Typeahead, TypeaheadItem, type SearchSource, type SearchableItem} from '@astryxdesign/core/Typeahead';
 import {fetchNominationAvailability, fetchPublicNomination, type NominationAvailability} from '@/lib/api';
+import {NominationConfirmation} from '@/components/nomination-confirmation';
 import {VoterLinkState} from '@/components/voter-link-state';
 import {NOMINATION_AGE_GROUPS, positionVisibleToAgeGroup, type Nomination, type NominationAgeGroup, type NominationPosition} from '@/lib/nomination-data';
 
 type Choice = {name: string; youthRecordId?: string};
-type Suggestion = {id: string; name: string; ageGroup: string};
+type Suggestion = {id: string; name: string};
+interface NomineeItem extends SearchableItem<{name: string; youthRecordId?: string}> {
+  auxiliaryData: {name: string; youthRecordId?: string};
+}
 
 function NomineeField({position, slug, value, error, onChange}: {position: NominationPosition; slug: string; value: Choice; error?: string; onChange: (choice: Choice) => void}) {
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [searching, setSearching] = useState(false);
   const [lookupError, setLookupError] = useState(false);
-  useEffect(() => {
-    const query = value.name.trim();
-    if (query.length < 2 || value.youthRecordId) {setSuggestions([]); setSearching(false); return;}
-    const controller = new AbortController();
-    setLookupError(false);
-    const timer = window.setTimeout(() => {
-      setSearching(true);
-      fetch(`/api/nominations/${encodeURIComponent(slug)}/lookup?q=${encodeURIComponent(query)}`, {signal: controller.signal, cache: 'no-store'})
-        .then((response) => {if (!response.ok) throw new Error('Lookup unavailable.'); return response.json();})
-        .then((body: {records?: Suggestion[]}) => setSuggestions(body.records ?? []))
-        .catch(() => { if (!controller.signal.aborted) {setSuggestions([]); setLookupError(true);} })
-        .finally(() => { if (!controller.signal.aborted) setSearching(false); });
-    }, 200);
-    return () => {window.clearTimeout(timer); controller.abort();};
-  }, [slug, value.name, value.youthRecordId]);
+  const searchSource = useMemo<SearchSource<NomineeItem>>(() => {
+    let controller: AbortController | null = null;
+    return {
+      bootstrap: () => [],
+      cancel: () => controller?.abort(),
+      async search(query) {
+        const name = query.trim();
+        if (name.length < 2) return [];
+        controller?.abort();
+        const requestController = new AbortController();
+        controller = requestController;
+        setLookupError(false);
+        let records: Suggestion[] = [];
+        try {
+          const response = await fetch(`/api/nominations/${encodeURIComponent(slug)}/lookup?q=${encodeURIComponent(name)}`, {
+            signal: requestController.signal,
+            cache: 'no-store',
+          });
+          if (!response.ok) throw new Error('Lookup unavailable.');
+          const body = await response.json() as {records?: Suggestion[]};
+          records = body.records ?? [];
+        } catch {
+          if (requestController.signal.aborted) return [];
+          setLookupError(true);
+        }
+        const matches: NomineeItem[] = records.map((record) => ({
+          id: record.id,
+          label: record.name,
+          auxiliaryData: {name: record.name, youthRecordId: record.id},
+        }));
+        if (!matches.some((item) => item.label.toLocaleLowerCase('en') === name.toLocaleLowerCase('en'))) {
+          matches.push({id: `typed:${name}`, label: name, auxiliaryData: {name}});
+        }
+        return matches;
+      },
+    };
+  }, [slug]);
+  const selected: NomineeItem | null = value.name ? {
+    id: value.youthRecordId ?? `typed:${value.name}`,
+    label: value.name,
+    auxiliaryData: {name: value.name, youthRecordId: value.youthRecordId},
+  } : null;
 
   return <VStack gap={3}>
-    <TextInput label={position.name} value={value.name} onChange={(name) => {onChange({name}); setSuggestions([]);}}
-      placeholder={`Nominate for ${position.name}`} description="Choose a Youth Record suggestion, or enter a name." width="100%" size="lg" isRequired autoComplete="off" status={error ? {type: 'error', message: error} : undefined} />
+    <Typeahead<NomineeItem>
+      label={position.name}
+      description="Search Youth Records, or choose the name you entered."
+      placeholder="Search or enter a name"
+      searchSource={searchSource}
+      value={selected}
+      onChange={(item) => {onChange(item ? item.auxiliaryData : {name: ''}); setLookupError(false);}}
+      renderItem={(item) => <TypeaheadItem item={item} />}
+      minQueryLength={2}
+      debounceMs={200}
+      width="100%"
+      size="lg"
+      isRequired
+      status={error ? {type: 'error', message: error} : undefined}
+    />
     {position.showRoleDetails && (position.aboutRole || position.responsibilities.length) ? <VStack gap={1}>
       {position.aboutRole ? <Text color="secondary">{position.aboutRole}</Text> : null}
       {position.responsibilities.length ? <section className="position-responsibilities" aria-label={`${position.name} responsibilities`}>
         <Text type="supporting" weight="semibold">Responsibilities</Text><ul>{position.responsibilities.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
       </section> : null}
     </VStack> : null}
-    {searching ? <Text type="supporting" color="secondary">Searching Youth Records…</Text> : null}
-    {lookupError ? <Text type="supporting" color="secondary">Youth Record search is unavailable. You can still enter a name.</Text> : null}
-    {!value.youthRecordId && suggestions.length ? <section aria-label={`Youth Record suggestions for ${position.name}`}><VStack gap={1}>
-      {suggestions.map((suggestion) => <Button key={suggestion.id} label={`Choose ${suggestion.name}`} variant="ghost" width="100%"
-        onClick={() => {onChange({name: suggestion.name, youthRecordId: suggestion.id}); setSuggestions([]);}}>{suggestion.name} · {suggestion.ageGroup}</Button>)}
-    </VStack></section> : null}
-    {value.youthRecordId ? <Text type="supporting" color="secondary">Selected from Youth Records. Edit the name to enter free text instead.</Text> : null}
+    {lookupError ? <Text type="supporting" color="secondary">Youth Record search is unavailable. You can still use the name you entered.</Text> : null}
   </VStack>;
 }
 
@@ -65,12 +103,13 @@ export function NominationForm({slug}: {slug: string}) {
   const [availability, setAvailability] = useState<NominationAvailability | null | undefined>(undefined);
   const [now, setNow] = useState(() => Date.now());
   const [choices, setChoices] = useState<Record<string, Choice>>({});
-  const [step, setStep] = useState<0 | 1>(0);
+  const [step, setStep] = useState<0 | 1 | 2>(0);
   const [ageGroup, setAgeGroup] = useState<NominationAgeGroup | null>(null);
   const [ageGroupError, setAgeGroupError] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [submittedAt, setSubmittedAt] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
@@ -105,45 +144,55 @@ export function NominationForm({slug}: {slug: string}) {
     return () => {active = false;};
   }, [slug, isActive]);
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!nomination || !ageGroup || !visiblePositions.length) return;
+  function reviewChoices() {
+    if (!visiblePositions.length) return;
     const invalid = Object.fromEntries(visiblePositions.flatMap((position) => {
       const length = choices[position.id]?.name.trim().length ?? 0;
-      return length >= 2 && length <= 160 ? [] : [[position.id, length < 2 ? 'Enter at least 2 characters.' : 'Use at most 160 characters.']];
+      return length >= 2 && length <= 160 ? [] : [[position.id, length < 2 ? 'Choose a name from the suggestions.' : 'Use at most 160 characters.']];
     }));
     if (Object.keys(invalid).length) {setFieldErrors(invalid); return;}
+    setStep(2);
+  }
+
+  async function submit() {
+    if (!nomination || !ageGroup || !visiblePositions.length || submitting) return;
     setSubmitting(true); setError('');
     try {
       const submittedChoices = Object.fromEntries(visiblePositions.map((position) => [position.id, choices[position.id]]));
       const response = await fetch(`/api/nominations/${encodeURIComponent(slug)}/submit`, {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ageGroup, choices: submittedChoices}),
       });
-      const body = await response.json() as {message?: string};
+      const body = await response.json() as {message?: string; submittedAt?: string};
       if (!response.ok) throw new Error(body.message ?? 'Your nomination could not be submitted.');
-      setSubmitted(true);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Your nomination could not be submitted.'); }
+      setSubmittedAt(body.submittedAt ?? new Date().toISOString());
+    } catch (cause) {
+      setConfirmOpen(false);
+      setError(cause instanceof Error ? cause.message : 'Your nomination could not be submitted.');
+    }
     finally { setSubmitting(false); }
   }
 
+  if (submittedAt && nomination) return <NominationConfirmation nominationName={nomination.name} submittedAt={submittedAt} />;
   if (availability?.status === 'Scheduled' && isBeforeStart) {
     return <VoterLinkState kind="scheduled" subject="nomination" electionTitle={availability.name} startsAt={availability.opensAt} now={now} />;
   }
   if (availability === null || (availability && !isActive)) return <VoterLinkState kind="unavailable" subject="nomination" />;
 
   return <AppShell height="fill" variant="wash" contentPadding={0}>
-    <Section variant="transparent" padding={6} className="access-page animated-mesh-gradient-background" width="100%">
+    <Section variant="transparent" padding={6} className="access-page nomination-access-page animated-mesh-gradient-background" width="100%">
       <VStack gap={6} hAlign="center" width="100%">
         <header className="access-brand"><Image src="/brand/ywap-marikina-elections-logo-word.svg" alt="YWAP Marikina Elections 2026" width={172} height={50} priority /></header>
-        <Card maxWidth={720} width="100%" padding={8} elevation="low" className="verification-card">
-          {availability === undefined || loading || (isActive && !nomination && !error) ? <VStack gap={5} aria-busy="true" aria-label="Loading nomination"><Skeleton width="70%" height="var(--spacing-8)" index={0} /><Skeleton width="100%" height="var(--spacing-4)" index={1} /><Skeleton width="100%" height="var(--spacing-12)" index={2} /></VStack> : submitted ? <VStack gap={4}>
-            <Heading level={1}>Nomination submitted</Heading>
-            <Text>Thank you. Your nominations have been recorded.</Text>
-          </VStack> : nomination ? <VStack gap={6}>
+        <Card maxWidth={720} width="100%" padding={8} elevation="low" className="verification-card nomination-wizard-card">
+          {availability === undefined || loading || (isActive && !nomination && !error) ? <VStack gap={5} aria-busy="true" aria-label="Loading nomination"><Skeleton width="70%" height="var(--spacing-8)" index={0} /><Skeleton width="100%" height="var(--spacing-4)" index={1} /><Skeleton width="100%" height="var(--spacing-12)" index={2} /></VStack> : nomination ? <VStack gap={6} width="100%" className="nomination-wizard-content">
             <VStack gap={2}><Heading level={1}>Submit your nomination</Heading><Text weight="semibold">{nomination.name}</Text>{nomination.description ? <Text color="secondary">{nomination.description}</Text> : null}</VStack>
+            <Stepper activeStep={step} density="compact" label="Nomination steps" horizontalOptions={{minimumStepWidth: 112, collapsedVariant: 'withLabel'}}>
+              <Step step={0} label="Age group" />
+              <Step step={1} label="Nominate" />
+              <Step step={2} label="Review" />
+            </Stepper>
             <Divider />
             {step === 0 ? <VStack gap={5}>
-              <VStack gap={1}><Text type="supporting" color="secondary">Step 1 of 2</Text><Heading level={2}>Choose your age group</Heading><Text color="secondary">Your age group determines which positions you can nominate for.</Text></VStack>
+              <VStack gap={1}><Text type="supporting" color="secondary">Step 1 of 3</Text><Heading level={2}>Choose your age group</Heading><Text color="secondary">Your age group determines which positions you can nominate for.</Text></VStack>
               <section aria-label="Age groups"><VStack gap={3} width="100%">
                 {NOMINATION_AGE_GROUPS.map((group) => <SelectableCard key={group.value} label={`${group.label}, ${group.ages}`} isSelected={ageGroup === group.value} onChange={() => {setAgeGroup(group.value); setAgeGroupError('');}} width="100%" padding={5}>
                   <VStack gap={1}><Text weight="semibold">{group.label}</Text><Text color="secondary">{group.ages}</Text></VStack>
@@ -151,20 +200,47 @@ export function NominationForm({slug}: {slug: string}) {
               </VStack></section>
               {ageGroupError ? <Banner status="error" title="Age group required" description={ageGroupError} container="section" /> : null}
               <Button label="Continue to nominations" variant="primary" size="lg" width="100%" onClick={() => {if (!ageGroup) {setAgeGroupError('Select your age group to continue.'); return;} setStep(1);}} />
-            </VStack> : <form onSubmit={(event) => void submit(event)} noValidate><VStack gap={6}>
-              <VStack gap={1}><Text type="supporting" color="secondary">Step 2 of 2 · {selectedAgeGroup?.label}</Text><Heading level={2}>Nominate</Heading>{visiblePositions.length ? <Text color="secondary">Enter a nominee for each position below.</Text> : null}</VStack>
-              {error ? <Banner status="error" title="We couldn’t submit your nomination" description={error} container="section" /> : null}
+            </VStack> : step === 1 ? <VStack gap={6} width="100%">
+              <VStack gap={1}><Text type="supporting" color="secondary">Step 2 of 3 · {selectedAgeGroup?.label}</Text><Heading level={2}>Nominate</Heading>{visiblePositions.length ? <Text color="secondary">Choose or enter a nominee for each position.</Text> : null}</VStack>
               {visiblePositions.length ? visiblePositions.map((position, index) => <VStack key={position.id} gap={5} width="100%">
                 {index ? <Divider /> : null}
                 <NomineeField position={position} slug={slug} value={choices[position.id] ?? {name: ''}} error={fieldErrors[position.id]}
                   onChange={(choice) => {setChoices((current) => ({...current, [position.id]: choice})); setFieldErrors((current) => ({...current, [position.id]: ''})); setError('');}} />
               </VStack>) : <Text color="secondary">No positions are available for your age group. Contact the election committee if you think this is a mistake.</Text>}
-              <Button label="Back to age groups" variant="secondary" width="100%" onClick={() => setStep(0)} />
-              {visiblePositions.length ? <Button type="submit" label="Submit nomination" variant="primary" size="lg" width="100%" isLoading={submitting} /> : null}
-            </VStack></form>}
+              <HStack gap={3} justify="between" align="center" wrap="wrap" width="100%">
+                <Button label="Back" variant="secondary" size="lg" onClick={() => setStep(0)} />
+                {visiblePositions.length ? <Button label="Review" variant="primary" size="lg" onClick={reviewChoices} /> : null}
+              </HStack>
+            </VStack> : <VStack gap={6} width="100%">
+              <VStack gap={1}><Text type="supporting" color="secondary">Step 3 of 3 · {selectedAgeGroup?.label}</Text><Heading level={2}>Review your nominations</Heading><Text color="secondary">Check each name before submitting.</Text></VStack>
+              {error ? <Banner status="error" title="We couldn’t submit your nomination" description={error} container="section" /> : null}
+              <VStack gap={4} width="100%">
+                {visiblePositions.map((position, index) => <section key={position.id} aria-label={position.name}>
+                  {index ? <Divider /> : null}
+                  <VStack gap={1} paddingBlockStart={index ? 4 : 0}>
+                    <Text type="supporting" color="secondary">{position.name}</Text>
+                    <Text weight="semibold">{choices[position.id]?.name}</Text>
+                  </VStack>
+                </section>)}
+              </VStack>
+              <HStack gap={3} justify="between" align="center" wrap="wrap" width="100%">
+                <Button label="Back" variant="secondary" size="lg" onClick={() => setStep(1)} />
+                <Button label="Submit" variant="primary" size="lg" onClick={() => setConfirmOpen(true)} />
+              </HStack>
+            </VStack>}
           </VStack> : <VStack gap={3}><Heading level={1}>Nomination unavailable</Heading><Text color="secondary">{error || 'This form is not accepting responses right now.'}</Text></VStack>}
         </Card>
       </VStack>
     </Section>
+    <Dialog isOpen={confirmOpen} onOpenChange={setConfirmOpen} purpose="form" width={480}>
+      <Layout height="auto" defaultHasDividers
+        header={<DialogHeader title="Submit your nominations?" />}
+        content={<LayoutContent><Text>Once submitted, your nominations will be recorded. You can go back to review them first.</Text></LayoutContent>}
+        footer={<LayoutFooter><HStack gap={3} justify="end" align="center" wrap="wrap" width="100%">
+          <Button label="Cancel" variant="secondary" onClick={() => setConfirmOpen(false)} isDisabled={submitting} />
+          <Button label="Confirm submission" variant="primary" onClick={() => void submit()} isLoading={submitting} />
+        </HStack></LayoutFooter>}
+      />
+    </Dialog>
   </AppShell>;
 }

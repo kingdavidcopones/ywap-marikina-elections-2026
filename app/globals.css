@@ -23,6 +23,19 @@ body {
   border-bottom: var(--spacing-1) solid var(--color-accent);
 }
 
+.nomination-access-page {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.nomination-access-page > .astryx-section {
+  width: 100%;
+}
+
+.nomination-wizard-card,
+.nomination-wizard-content {
+  min-inline-size: 0;
+}
+
 .animated-mesh-gradient-background {
   background-image: linear-gradient(
     135deg,

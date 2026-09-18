@@ -242,6 +242,10 @@ export async function submitNomination(identifier: string, ageGroup: unknown, ch
     if (!choice || typeof choice !== 'object' || Array.isArray(choice) || typeof choice.name !== 'string' || choice.name.trim().length < 2 || choice.name.trim().length > 160 || (choice.youthRecordId !== undefined && !validUuid(choice.youthRecordId))) throw new NominationError(`Enter a valid nominee for ${position.name}.`);
   }
   const {data, error} = await createServerSupabaseClient().rpc('submit_nomination', {p_nomination_id: nomination.id, p_age_group: ageGroup, p_choices: choices});
+  if (error?.code === 'PGRST202') {
+    console.error('The nomination age-group database migration has not been applied.', error);
+    throw new NominationError('We couldn’t record your nominations right now. Please contact the election committee.', 503);
+  }
   check(error);
   return data as string;
 }

@@ -329,7 +329,6 @@ export function NominationEditor({id}: {id: string}) {
       </header>
       <VStack gap={4}>
         {!canEdit ? <Banner status="warning" title="Youth Record uploads are locked" description="Unpublish or restore this nomination to change its Youth Records." container="section" /> : null}
-        <Text type="supporting" color="secondary">CSV columns: member_id, first_name, last_name, gender, age, birth_date, age_group. Dates may use YYYY-MM-DD, month/day/year, or unambiguous day/month/year.</Text>
         {uploadError ? <Banner status="error" title="CSV needs attention" description={uploadError} container="section" /> : null}
         {busy ? <Text type="supporting" color="secondary">Uploading Youth Records…</Text> : null}
         {collectionError ? <Banner status="error" title="Youth Records could not be loaded" description={collectionError} container="section" /> : null}
