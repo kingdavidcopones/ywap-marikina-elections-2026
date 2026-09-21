@@ -200,6 +200,12 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       .finally(() => setIsReady(true));
   }, [eventId]);
 
+  useEffect(() => {
+    if (voterUploadStatus?.type !== 'success') return;
+    const timer = window.setTimeout(() => setVoterUploadStatus(undefined), 3000);
+    return () => window.clearTimeout(timer);
+  }, [voterUploadStatus]);
+
   const eventVoters = useMemo(
     () => election ? eligibleVotersForEvent(election, voters) : [],
     [election, voters],
@@ -1450,7 +1456,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
         description="The current eligible voter list will be lost and replaced by the Member IDs in the CSV you choose. This can’t be undone."
         actionLabel="Choose replacement CSV"
         actionVariant="destructive"
-        onAction={() => replaceVotersInputRef.current?.click()}
+        onAction={() => {setIsReplaceVotersOpen(false); replaceVotersInputRef.current?.click();}}
       />
 
       <AlertDialog

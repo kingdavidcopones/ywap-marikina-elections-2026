@@ -237,7 +237,7 @@ export function NominationEditor({id}: {id: string}) {
     shortDescription: position.shortDescription || 'None added',
     required: position.required ? 'Required' : 'Optional'}));
   const nomineeRows: NomineeRow[] = nomineeEntries.map((entry: NominationEntry) => ({id: entry.id, nomineeName: entry.nomineeName,
-    positionName: entry.positionName, nominatedBy: entry.nominatorName || entry.nominatorEmail || '—', submittedAt: entry.submittedAt}));
+    positionName: entry.positionName, nominatedBy: entry.nominatorName || '—', submittedAt: entry.submittedAt}));
   const youthRows: YouthRow[] = youthRecords.map((record) => ({id: record.id, memberId: record.memberId, name: record.name,
     ageGroup: record.ageGroup, importedAt: record.importedAt}));
   const currentNomineesPage = nomineesPage;

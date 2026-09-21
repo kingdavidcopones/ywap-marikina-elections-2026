@@ -12,7 +12,7 @@ export async function GET(_request: Request, context: {params: Promise<{id: stri
     const {id} = await context.params;
     const nominees = await getAllNominationNominees(id);
     const csv = buildCsv(['Name', 'Position nominated', 'Nominated by', 'Submitted at'],
-      nominees.map((entry) => [entry.nomineeName, entry.positionName, entry.nominatorName || entry.nominatorEmail || '', entry.submittedAt]));
+      nominees.map((entry) => [entry.nomineeName, entry.positionName, entry.nominatorName || '', entry.submittedAt]));
     return new Response(csv, {headers: {'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="nominees.csv"'}});
   } catch (error) { return nominationErrorResponse(error, 'Nominees could not be exported.'); }
 }

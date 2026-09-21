@@ -68,20 +68,20 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
     const flexibleDateRows = await request.get(api(`/api/admin/nominations/${id}/youth-records?page=1`));
     expect((await flexibleDateRows.json()).records[0].birthDate).toBe('2006-01-31');
 
-    const record = (memberId: string, firstName: string) => ({memberId, firstName, lastName: 'Test', ageGroup: 'Youth', gender: 'Other', age: 20,
-      birthDate: '2006-01-01', attributes: {member_id: memberId, first_name: firstName, last_name: 'Test'}});
-    const rows = [record(`QA-${stamp}-1`, 'Alex'), record(`QA-${stamp}-2`, 'Jordan')];
+    const record = (memberId: string, firstName: string, nominee = 'YES') => ({memberId, firstName, lastName: 'Test', ageGroup: 'Youth', gender: 'Other', age: 20,
+      birthDate: '2006-01-01', attributes: {member_id: memberId, first_name: firstName, last_name: 'Test', nominee}});
+    const rows = [record(`QA-${stamp}-1`, 'Alex'), record(`QA-${stamp}-2`, 'Jordan'), record(`QA-${stamp}-3`, 'Casey', 'NO')];
     expect((await patch({type: 'records', mode: 'add', records: [{...rows[0], birthDate: '2026-02-30'}]})).status()).toBe(400);
     expect((await patch({type: 'records', mode: 'add', records: [rows[0], rows[0]]})).status()).toBe(400);
     const uploaded = await patch({type: 'records', mode: 'add', records: rows});
     expect(uploaded.status()).toBe(200);
-    expect((await uploaded.json()).nomination.youthRecordCount).toBe(2);
+    expect((await uploaded.json()).nomination.youthRecordCount).toBe(3);
     const adminDetail = (await (await request.get(api(`/api/admin/nominations/${id}`))).json()).nomination;
     expect(adminDetail.youthRecords).toEqual([]);
-    expect(adminDetail.youthRecordCount).toBe(2);
+    expect(adminDetail.youthRecordCount).toBe(3);
     const youthPage = await request.get(api(`/api/admin/nominations/${id}/youth-records?page=1`));
     expect(youthPage.status()).toBe(200);
-    expect((await youthPage.json()).records).toHaveLength(2);
+    expect((await youthPage.json()).records).toHaveLength(3);
     expect((await request.get(api(`/api/admin/nominations/${id}/youth-records?page=0`))).status()).toBe(400);
 
     const future = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -117,16 +117,17 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
     expect(found.status()).toBe(200);
     const alex = (await found.json()).records[0];
     expect(alex.name).toBe('Alex Test');
-    const submit = (choices: Record<string, unknown>, ageGroup = 'teens', email = `qa-nominator-1-${stamp}@example.com`, name = 'QA Nominator') =>
-      publicRequest.post(api(`/api/nominations/${slug}/submit`), {data: {ageGroup, name, email, choices}});
+    const notEligible = await publicRequest.get(api(`/api/nominations/${slug}/lookup?q=Casey`));
+    expect((await notEligible.json()).records).toEqual([]); // attributes.nominee is "NO", so Casey is excluded from suggestions.
+    const submit = (choices: Record<string, unknown>, ageGroup = 'teens', name = 'QA Nominator') =>
+      publicRequest.post(api(`/api/nominations/${slug}/submit`), {data: {ageGroup, name, choices}});
     expect((await submit({[chairId]: {name: 'Alex Test'}, [secretaryId]: {name: 'Taylor Example'}}, 'invalid')).status()).toBe(400);
     expect((await submit({[chairId]: {name: 'A'}})).status()).toBe(400);
     expect((await submit({[chairId]: {name: 'Alex Test'}, [secretaryId]: {name: 'Taylor Example'}}, 'young_people')).status()).toBe(400);
     expect((await submit({[chairId]: {name: 'Alex Test', youthRecordId: crypto.randomUUID()}, [secretaryId]: {name: 'Taylor Example'}})).status()).toBe(400);
     const choices = {[chairId]: {name: 'Alex Test', youthRecordId: alex.id}, [secretaryId]: {name: 'Taylor Example'}};
     expect((await submit(choices)).status()).toBe(201);
-    expect((await submit(choices)).status()).toBe(409); // A second nomination with the same email is blocked.
-    expect((await submit(choices, 'teens', `qa-nominator-2-${stamp}@example.com`)).status()).toBe(201); // A different nominator may still submit.
+    expect((await submit(choices)).status()).toBe(201); // Nominators no longer need a unique identity to submit again.
     const nomineesResponse = await request.get(api(`/api/admin/nominations/${id}/nominees?page=1`));
     expect(nomineesResponse.status()).toBe(200);
     const nominees = await nomineesResponse.json();
@@ -160,7 +161,6 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
     try {
       await publicPage.goto(api(`/nominate/${slug}`));
       await expect(publicPage.getByRole('heading', {name: 'Submit your nomination'})).toBeVisible();
-      await publicPage.getByRole('textbox', {name: 'Email'}).fill(`qa-nominator-3-${stamp}@example.com`);
       await publicPage.getByRole('button', {name: 'Continue to nominations'}).click();
       await expect(publicPage.getByText('Select your age group to continue.')).toBeVisible();
       await publicPage.getByText('Teens', {exact: true}).click();
@@ -181,7 +181,6 @@ test('nomination API and public flow', async ({page, browser, request: publicReq
     const youngPeoplePage = await browser.newPage();
     try {
       await youngPeoplePage.goto(api(`/nominate/${slug}`));
-      await youngPeoplePage.getByRole('textbox', {name: 'Email'}).fill(`qa-nominator-4-${stamp}@example.com`);
       await youngPeoplePage.getByText('Young People', {exact: true}).click();
       await youngPeoplePage.getByRole('button', {name: 'Continue to nominations'}).click();
       await expect(youngPeoplePage.getByRole('combobox', {name: 'Secretary'})).toBeVisible();

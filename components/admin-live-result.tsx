@@ -16,6 +16,7 @@ import {Icon} from '@astryxdesign/core/Icon';
 import {Pagination} from '@astryxdesign/core/Pagination';
 import {ProgressBar} from '@astryxdesign/core/ProgressBar';
 import {Section} from '@astryxdesign/core/Section';
+import {Skeleton} from '@astryxdesign/core/Skeleton';
 import {Tab, TabList} from '@astryxdesign/core/TabList';
 import {Table, pixel, proportional} from '@astryxdesign/core/Table';
 import {Text} from '@astryxdesign/core/Text';
@@ -34,12 +35,32 @@ function statusVariant(status: ElectionEvent['status']) {
   return 'neutral' as const;
 }
 
+function NomineeAvatar({name, imageUrl}: {name: string; imageUrl?: string}) {
+  const [loaded, setLoaded] = useState(!imageUrl);
+
+  useEffect(() => {
+    setLoaded(!imageUrl);
+    if (!imageUrl) return;
+    let active = true;
+    const image = new Image();
+    image.onload = () => { if (active) setLoaded(true); };
+    image.onerror = () => { if (active) setLoaded(true); };
+    image.src = imageUrl;
+    return () => { active = false; };
+  }, [imageUrl]);
+
+  return loaded
+    ? <Avatar name={name} src={imageUrl} size="lg" shape="rounded" tooltip={false} />
+    : <Skeleton width={48} height={48} radius={2} />;
+}
+
 export function AdminLiveResult({eventId}: {eventId: string}) {
   const [event, setEvent] = useState<ElectionEvent | null>(null);
   const [results, setResults] = useState<ElectionResult[]>([]);
   const [isReady, setIsReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshMessage, setRefreshMessage] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [view, setView] = useState<'summary' | 'individual'>('summary');
   const [individualRecords, setIndividualRecords] = useState<IndividualVoteRecord[]>([]);
   const [individualLoading, setIndividualLoading] = useState(false);
@@ -79,6 +100,7 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
   }, [view, event?.id, event?.anonymousVoting]);
 
   async function refreshResults() {
+    setIsRefreshing(true);
     try {
       const payload = await fetchResults(eventId);
       setEvent(payload.election);
@@ -90,6 +112,8 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
       setRefreshMessage('Results refreshed just now.');
     } catch {
       setRefreshMessage('Results could not be refreshed. Try again.');
+    } finally {
+      setIsRefreshing(false);
     }
   }
 
@@ -138,9 +162,10 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
             variant="secondary"
             icon={<ArrowClockwiseIcon />}
             onClick={refreshResults}
+            isLoading={isRefreshing}
           />
           <Text type="supporting" color="secondary" aria-live="polite">
-            {refreshMessage || 'Showing the latest saved totals'}
+            {isRefreshing ? 'Refreshing results. Please wait.' : (refreshMessage || 'Showing the latest saved totals')}
           </Text>
         </VStack>
       </header>
@@ -181,7 +206,7 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
                 <VStack gap={5}>
                   {sortedNominees.length ? sortedNominees.map((nominee) => (
                     <HStack key={nominee.id} gap={4} align="center">
-                      <Avatar name={nominee.name} src={nominee.imageUrl} size="lg" shape="rounded" tooltip={false} />
+                      <NomineeAvatar name={nominee.name} imageUrl={nominee.imageUrl} />
                       <VStack gap={2} width="100%">
                         <HStack justify="between" gap={3} align="center">
                           <Text weight="semibold">{nominee.name}</Text>
