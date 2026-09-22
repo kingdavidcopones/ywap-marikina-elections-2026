@@ -48,7 +48,7 @@ export function VoterResults() {
             <Heading level={1}>{election?.title ?? 'Published election results'}</Heading>
             <Text color="secondary">{election ? `${election.ballotsSubmitted} of ${election.eligibleVoters} eligible voters took part. ` : ''}Results show totals only—never individual ballots.</Text>
           </VStack>
-          <Button label="Back to voter sign-in" href="/" variant="secondary" />
+          <Button label="Back to voter sign-in" href="/access" variant="secondary" />
         </header>
         <section className="results-grid">
           {results.length ? results.map((result) => {

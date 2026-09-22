@@ -25,7 +25,7 @@ test('position editor saves CSV filters and limits them to five', async ({page})
     await route.fulfill({json: {election}});
   });
 
-  await page.goto(`/admin/elections/${eventId}`);
+  await page.goto(`/elections/${eventId}`);
   await page.getByRole('button', {name: 'Add position'}).click();
   await page.getByPlaceholder('e.g. President').fill('District Representative');
   await page.getByRole('textbox', {name: /About the role/}).fill('Represents the district.');
@@ -107,7 +107,7 @@ test('custom position filter is unavailable without voter CSV data', async ({pag
   await page.route(`**/api/elections/${eventId}`, (route) => route.fulfill({json: {election}}));
   await page.route(`**/api/admin/elections/${eventId}/voters`, (route) => route.fulfill({json: {voters: []}}));
 
-  await page.goto(`/admin/elections/${eventId}`);
+  await page.goto(`/elections/${eventId}`);
   await page.getByRole('button', {name: 'Add position'}).click();
   await page.getByRole('combobox', {name: 'Who can vote for this position'}).click();
   await expect(page.getByRole('option', {name: /Custom Filter/})).toHaveAttribute('aria-disabled', 'true');

@@ -85,7 +85,7 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
   }, [eventId]);
 
   useEffect(() => {
-    if (view !== 'individual' || !event || event.anonymousVoting) return;
+    if (view !== 'individual' || !event) return;
     let active = true;
     setIndividualLoading(true);
     setIndividualError(null);
@@ -126,7 +126,7 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
           title={loadError === 'Election results were not found.' ? 'Election not found' : 'Results could not be loaded'}
           description={loadError === 'Election results were not found.' ? 'This election may have been removed.' : loadError ?? 'Please try again.'}
           headingLevel={1}
-          actions={<Button label="Back to live results" href="/admin/results" variant="primary" />}
+          actions={<Button label="Back to live results" href="/live-results" variant="primary" />}
         />
       </main>
     );
@@ -141,7 +141,7 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
       <header className="admin-page-header live-result-header">
         <VStack gap={3}>
           <HStack>
-            <Button label="Back to live results" href="/admin/results" variant="ghost" size="sm" icon={<ArrowLeftIcon />} />
+            <Button label="Back to live results" href="/live-results" variant="ghost" size="sm" icon={<ArrowLeftIcon />} />
           </HStack>
           <VStack gap={2}>
             <HStack gap={3} align="center" wrap="wrap">
@@ -178,14 +178,12 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
         <article><Text type="supporting" color="secondary">Positions counted</Text><Text type="display-3" hasTabularNumbers>{results.length} / {event.positions.length}</Text></article>
       </section>
 
-      {!event.anonymousVoting ? (
-        <TabList value={view} onChange={(value) => setView(value as 'summary' | 'individual')} role="tablist" hasDivider>
-          <Tab value="summary" label="Summary" panelId="live-summary-panel" />
-          <Tab value="individual" label="Individual" panelId="live-individual-panel" />
-        </TabList>
-      ) : null}
+      <TabList value={view} onChange={(value) => setView(value as 'summary' | 'individual')} role="tablist" hasDivider>
+        <Tab value="summary" label="Summary" panelId="live-summary-panel" />
+        <Tab value="individual" label="Individual" panelId="live-individual-panel" />
+      </TabList>
 
-      {(event.anonymousVoting || view === 'summary') ? <section id="live-summary-panel" role={event.anonymousVoting ? undefined : 'tabpanel'} aria-label="Summary">
+      {view === 'summary' ? <section id="live-summary-panel" role="tabpanel" aria-label="Summary">
       {results.length ? (
         <Grid columns={{minWidth: 320, max: 2, repeat: 'fit'}} gap={5}>
           {results.map((result) => {
@@ -269,8 +267,10 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
                 density="compact"
                 dividers="rows"
                 columns={[
-                  {key: 'voterName', header: 'Voter', width: proportional(1), renderCell: (row) => <VStack gap={0}><Text weight="semibold">{row.voterName}</Text><Text type="supporting" color="secondary">{row.ageGroup}</Text></VStack>},
-                  {key: 'memberId', header: 'Member ID', width: pixel(150)},
+                  ...(event.anonymousVoting ? [] : [
+                    {key: 'voterName', header: 'Voter', width: proportional(1), renderCell: (row: IndividualVoteRecord) => <VStack gap={0}><Text weight="semibold">{row.voterName}</Text><Text type="supporting" color="secondary">{row.ageGroup}</Text></VStack>},
+                    {key: 'memberId', header: 'Member ID', width: pixel(150)},
+                  ]),
                   {key: 'position', header: 'Position', width: proportional(1)},
                   {key: 'choice', header: 'Vote', width: proportional(1)},
                   {key: 'submittedAt', header: 'Submitted at', width: pixel(180)},

@@ -116,7 +116,7 @@ export function BallotReview() {
                 return (
                   <Card key={position.id} padding={5} className="review-row">
                     <HStack gap={4} align="center" justify="between">
-                      <HStack gap={4} align="center">
+                      <HStack gap={4} align="center" className="review-row-body">
                         {nomineeId === 'abstain' ? (
                           <Text className="abstain-mark" aria-hidden="true">—</Text>
                         ) : (

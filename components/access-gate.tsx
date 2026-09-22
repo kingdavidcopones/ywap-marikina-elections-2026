@@ -15,7 +15,7 @@ export function AccessGate({title = 'Let’s verify your voter record first'}: {
           <Text color="secondary" as="p">
             We’ll use your Member ID and last name to confirm that you’re eligible for this election.
           </Text>
-          <Button label="Verify my voter record" href="/" variant="primary" />
+          <Button label="Verify my voter record" href="/access" variant="primary" />
         </VStack>
       </Card>
     </main>

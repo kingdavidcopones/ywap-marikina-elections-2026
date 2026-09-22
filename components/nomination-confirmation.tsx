@@ -29,7 +29,7 @@ export function NominationConfirmation({nominationName, submittedAt}: {nominatio
               <dd>Recorded</dd>
             </dl>
             <Text type="supporting" color="secondary" as="p">Your nominations have been recorded.</Text>
-            <Button label="Done" href="/" variant="primary" width="100%" />
+            <Button label="Done" href="/access" variant="primary" width="100%" />
           </VStack>
         </Card>
       </VStack>

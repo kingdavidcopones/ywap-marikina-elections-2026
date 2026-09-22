@@ -86,7 +86,7 @@ export function ElectionDashboard() {
                 </section>
 
                 <HStack gap={3} justify="end">
-                  <Button label={`Manage ${event.title}`} href={`/admin/elections/${event.id}`} variant="secondary">Manage event</Button>
+                  <Button label={`Manage ${event.title}`} href={`/elections/${event.id}`} variant="secondary">Manage event</Button>
                   <Button
                     label={`${ballotLabel}: ${event.title}`}
                     href={`/vote/${ballotSlug}`}

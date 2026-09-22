@@ -31,17 +31,17 @@ import {VStack} from '@astryxdesign/core/VStack';
 import {isNetworkError, reportNetworkError} from '@/lib/network-error';
 
 const destinations = [
-  {label: 'Elections', href: '/admin', icon: CalendarCheckIcon},
-  {label: 'Nominations', href: '/admin/nominations', icon: UserPlusIcon},
-  {label: 'Live results', href: '/admin/results', icon: ChartBarIcon},
-  {label: 'Audit log', href: '/admin/audit', icon: ClipboardTextIcon},
+  {label: 'Elections', href: '/', icon: CalendarCheckIcon},
+  {label: 'Nominations', href: '/nominations', icon: UserPlusIcon},
+  {label: 'Live results', href: '/live-results', icon: ChartBarIcon},
+  {label: 'Audit log', href: '/audit', icon: ClipboardTextIcon},
 ];
 
 const CreateElectionDialog = dynamic(() => import('@/components/create-election').then((module) => module.CreateElectionDialog));
 
 function isDestinationSelected(pathname: string, href: string) {
-  if (href === '/admin') {
-    return pathname === '/admin' || pathname.startsWith('/admin/elections/');
+  if (href === '/') {
+    return pathname === '/' || pathname.startsWith('/elections/');
   }
 
   return pathname === href || pathname.startsWith(`${href}/`);

@@ -46,6 +46,7 @@ export type NominationEntry = {
   youthRecordId?: string;
   submittedAt: string;
   nominatorName?: string;
+  nomineeEligible: boolean;
 };
 
 export type Nomination = {

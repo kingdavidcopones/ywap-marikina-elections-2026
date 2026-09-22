@@ -65,8 +65,8 @@ export function AdminResults() {
             return (
               <ListItem
                 key={event.id}
-                href={`/admin/results/${event.id}`}
-                onClick={() => router.push(`/admin/results/${event.id}`)}
+                href={`/live-results/${event.id}`}
+                onClick={() => router.push(`/live-results/${event.id}`)}
                 label={event.title}
                 description={
                   <HStack className="results-election-description" gap={4} align="center">

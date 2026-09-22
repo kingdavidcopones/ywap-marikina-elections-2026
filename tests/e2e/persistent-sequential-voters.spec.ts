@@ -87,7 +87,7 @@ test('two same-surname voters submit only filtered positions and persist separat
   }
 
   try {
-    await page.goto('/admin');
+    await page.goto('/');
     await page.getByLabel('Username').fill(process.env.ADMIN_USERNAME ?? 'admin');
     await page.getByLabel('Password').fill(adminPassword);
     await page.getByRole('button', {name: 'Sign in'}).click();

@@ -194,7 +194,7 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
       const saved = await createElection(newEvent, voters);
       toast({body: `${saved.title} draft created.`, uniqueID: 'election-created'});
       closeCreationDialog();
-      router.push(`/admin/elections/${saved.id}`);
+      router.push(`/elections/${saved.id}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The election could not be created.');
       setIsCreating(false);

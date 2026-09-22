@@ -10,7 +10,7 @@ test('admin creates an election, a voter casts once, and totals stay anonymous',
   const electionTitle = `E2E Election ${crypto.randomUUID().slice(0, 8)}`;
   if (!adminPassword) throw new Error('ADMIN_PASSWORD is required for the end-to-end test.');
 
-  await page.goto('/admin');
+  await page.goto('/');
   await page.getByLabel('Username').fill(adminUsername);
   await page.getByLabel('Password').fill(adminPassword);
   await page.getByRole('button', {name: 'Sign in'}).click();
@@ -25,7 +25,7 @@ test('admin creates an election, a voter casts once, and totals stay anonymous',
   await expect(page.getByText('1 valid')).toBeVisible();
   await page.getByRole('button', {name: 'Use voter list'}).click();
   await page.getByRole('button', {name: 'Create election draft'}).click();
-  await page.waitForURL(/\/admin\/elections\/[0-9a-f-]+$/);
+  await page.waitForURL(/\/elections\/[0-9a-f-]+$/);
 
   const eventId = page.url().split('/').at(-1)!;
   const slug = `e2e-election-${eventId.slice(0, 8)}`;
@@ -70,7 +70,7 @@ test('admin creates an election, a voter casts once, and totals stay anonymous',
   await expect(page.getByRole('heading', {name: 'Your ballot is in'})).toBeVisible();
 
   await page.request.delete('/api/admin/session');
-  await page.goto('/admin/results');
+  await page.goto('/live-results');
   await page.getByLabel('Username').fill(adminUsername);
   await page.getByLabel('Password').fill(adminPassword);
   await page.getByRole('button', {name: 'Sign in'}).click();
@@ -83,7 +83,7 @@ test('admin creates an election, a voter casts once, and totals stay anonymous',
   await expect(page.getByText('100.0%', {exact: true})).toBeVisible();
   await expect(page.getByText('1 vote', {exact: true}).first()).toBeVisible();
 
-  await page.goto('/admin/audit');
+  await page.goto('/audit');
   await expect(page.getByText('ballot submitted').first()).toBeVisible();
   const published = {...election, status: 'Published', ballotsSubmitted: 1};
   expect((await page.request.put(`/api/admin/elections/${eventId}`, {data: {election: published}})).ok()).toBeTruthy();

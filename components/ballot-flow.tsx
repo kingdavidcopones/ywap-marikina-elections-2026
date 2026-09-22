@@ -104,7 +104,7 @@ export function BallotFlow({ballotSlug}: {ballotSlug?: string}) {
 
   function leaveBallot() {
     setIsLeaveDialogOpen(false);
-    router.push('/');
+    router.push('/access');
   }
 
   if (!ready) return <VoterFlowSkeleton />;
@@ -118,7 +118,7 @@ export function BallotFlow({ballotSlug}: {ballotSlug?: string}) {
               icon={<Icon icon={ListChecksIcon} size="lg" />}
               title="This ballot has no positions yet"
               description="The election committee is still preparing this ballot. Check back after the election is ready."
-              actions={<Button label="Return to voter sign-in" href="/" variant="primary" />}
+              actions={<Button label="Return to voter sign-in" href="/access" variant="primary" />}
               headingLevel={1}
             />
           </Card>

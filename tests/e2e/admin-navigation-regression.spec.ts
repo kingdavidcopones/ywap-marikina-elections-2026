@@ -15,7 +15,7 @@ test('election detail stays visible when voter records fail to load', async ({pa
   await page.route(`**/api/elections/${eventId}`, (route) => route.fulfill({json: {election}}));
   await page.route(`**/api/admin/elections/${eventId}/voters`, (route) => route.fulfill({status: 503, json: {message: 'Voter records are temporarily unavailable.'}}));
 
-  await page.goto(`/admin/elections/${eventId}`);
+  await page.goto(`/elections/${eventId}`);
   await expect(page.getByRole('heading', {name: election.title})).toBeVisible();
   await expect(page.getByText('Voter records are temporarily unavailable.')).toBeVisible();
   await expect(page.getByRole('heading', {name: 'We couldn’t find this election'})).toHaveCount(0);
@@ -32,13 +32,13 @@ test('creating a draft closes the modal before opening its page', async ({page})
   await page.route('**/api/elections/*', (route) => route.fulfill({json: {election: {...election, title: 'New draft'}}}));
   await page.route('**/api/admin/elections/*/voters', (route) => route.fulfill({json: {voters: []}}));
 
-  await page.goto('/admin');
+  await page.goto('/');
   await page.getByRole('button', {name: 'Create election'}).first().click();
   await page.getByPlaceholder('e.g. Youth Elections').fill('New draft');
   await expect(page.getByRole('checkbox', {name: 'Anonymous voting'})).toBeChecked();
   await page.getByRole('checkbox', {name: 'Anonymous voting'}).uncheck();
   await page.getByRole('button', {name: 'Create election draft'}).click();
-  await expect(page).toHaveURL(/\/admin\/elections\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\/elections\/[0-9a-f-]+$/);
   await expect(page.getByRole('alertdialog', {name: 'Create an election'})).toHaveCount(0);
   await expect(page.getByRole('heading', {name: 'New draft'})).toBeVisible();
   expect(submittedAnonymousVoting).toBe(false);
@@ -47,7 +47,7 @@ test('creating a draft closes the modal before opening its page', async ({page})
 test('create-election actions remain visible when the dialog content overflows', async ({page}) => {
   await page.setViewportSize({width: 700, height: 420});
   await page.route('**/api/elections', (route) => route.fulfill({json: {elections: []}}));
-  await page.goto('/admin');
+  await page.goto('/');
   await page.getByRole('button', {name: 'Create election'}).first().click();
   const dialog = page.getByRole('alertdialog', {name: 'Create an election'});
   await expect(dialog.getByRole('button', {name: 'Create election draft'})).toBeInViewport();
@@ -61,11 +61,11 @@ test('deleting an election confirms success after navigation', async ({page}) =>
   await page.route(`**/api/admin/elections/${eventId}`, (route) => route.fulfill({json: {ok: true}}));
   await page.route('**/api/elections', (route) => route.fulfill({json: {elections: []}}));
 
-  await page.goto(`/admin/elections/${eventId}`);
+  await page.goto(`/elections/${eventId}`);
   await page.getByRole('button', {name: 'Edit event'}).click();
   await page.getByRole('menuitem', {name: 'Delete election'}).click();
   await page.getByRole('alertdialog').getByRole('button', {name: 'Delete election'}).click();
-  await expect(page).toHaveURL('/admin');
+  await expect(page).toHaveURL('/');
   await expect(page.getByRole('region', {name: 'Notifications'}).getByText('Navigation regression was deleted.')).toBeVisible();
 });
 
@@ -73,10 +73,10 @@ test('live results row responds when its end icon is clicked', async ({page}) =>
   await page.route('**/api/elections', (route) => route.fulfill({json: {elections: [{...election, positionCount: 0}]}}));
   await page.route(`**/api/elections/${eventId}/results`, (route) => route.fulfill({json: {election, results: []}}));
 
-  await page.goto('/admin/results');
+  await page.goto('/live-results');
   await expect(page.getByRole('link', {name: election.title})).toBeVisible();
   await page.locator('.results-election-list li').first().locator('svg').last().click();
-  await expect(page).toHaveURL(`/admin/results/${eventId}`);
+  await expect(page).toHaveURL(`/live-results/${eventId}`);
   await expect(page.getByRole('heading', {name: election.title})).toBeVisible();
 });
 
@@ -88,7 +88,7 @@ test('non-anonymous live results show admin-only individual vote records', async
     position: 'President', choice: 'Candidate A',
   }]}}));
 
-  await page.goto(`/admin/results/${eventId}`);
+  await page.goto(`/live-results/${eventId}`);
   await expect(page.getByRole('tab', {name: 'Summary'})).toBeVisible();
   await page.getByRole('tab', {name: 'Individual'}).click();
   await expect(page.getByRole('tabpanel', {name: 'Individual vote records'}).getByText('Test Voter')).toBeVisible();
@@ -106,7 +106,7 @@ test('individual vote records paginate once there are more than a page of record
   await page.route(`**/api/elections/${eventId}/results`, (route) => route.fulfill({json: {election: identifiableElection, results: []}}));
   await page.route(`**/api/admin/elections/${eventId}/individual-results`, (route) => route.fulfill({json: {records}}));
 
-  await page.goto(`/admin/results/${eventId}`);
+  await page.goto(`/live-results/${eventId}`);
   await page.getByRole('tab', {name: 'Individual'}).click();
   const panel = page.getByRole('tabpanel', {name: 'Individual vote records'});
   const pagination = page.getByRole('navigation', {name: 'Individual vote record pages'});

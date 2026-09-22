@@ -28,7 +28,7 @@ test('candidate save buttons stay busy until the server confirms add and edit', 
     await route.fulfill({json: {election}});
   });
 
-  await page.goto(`/admin/elections/${eventId}`);
+  await page.goto(`/elections/${eventId}`);
   await page.getByRole('button', {name: 'Add candidate for President'}).click();
   await page.getByRole('combobox', {name: 'Candidate'}).click();
   await page.getByRole('option', {name: /Test Voter/}).click();

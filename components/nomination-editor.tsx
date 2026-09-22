@@ -39,7 +39,7 @@ import {normalizeCsvBirthDate, normalizeGender, parseVoters} from '@/lib/csv';
 import {NOMINATION_AGE_GROUPS, isNominationAgeGroup, type Nomination, type NominationAgeGroup, type NominationEntry, type NominationPosition, type NominationStatus, type YouthRecord} from '@/lib/nomination-data';
 
 interface PositionRow extends Record<string, unknown> { id: string; name: string; audience: string; shortDescription: string; required: string; }
-interface NomineeRow extends Record<string, unknown> { id: string; nomineeName: string; positionName: string; nominatedBy: string; submittedAt: string; }
+interface NomineeRow extends Record<string, unknown> { id: string; nomineeName: string; nominee: string; positionName: string; nominatedBy: string; submittedAt: string; }
 interface YouthRow extends Record<string, unknown> { id: string; memberId: string; name: string; ageGroup: string; importedAt: string; }
 type UploadRecord = Omit<YouthRecord, 'id' | 'name' | 'importedAt'>;
 type RemoveTarget = {type: 'delete-position' | 'delete-nominee'; id: string; name: string};
@@ -109,6 +109,7 @@ export function NominationEditor({id}: {id: string}) {
   const [pendingStatusAction, setPendingStatusAction] = useState<'unpublish' | 'archive' | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null);
+  const [isRemovingTarget, setIsRemovingTarget] = useState(false);
   const [nomineeEntries, setNomineeEntries] = useState<NominationEntry[]>([]);
   const [youthRecords, setYouthRecords] = useState<YouthRecord[]>([]);
   const [nomineeTotal, setNomineeTotal] = useState(0);
@@ -224,7 +225,7 @@ export function NominationEditor({id}: {id: string}) {
       await removeNomination(nomination.id);
       setDeleteOpen(false);
       toast({body: `${nomination.name} was deleted.`});
-      router.push('/admin/nominations');
+      router.push('/nominations');
     } catch (cause) {
       toast({body: cause instanceof Error ? cause.message : 'The nomination could not be deleted.', type: 'error'});
     } finally {setBusy(false);}
@@ -237,7 +238,7 @@ export function NominationEditor({id}: {id: string}) {
     shortDescription: position.shortDescription || 'None added',
     required: position.required ? 'Required' : 'Optional'}));
   const nomineeRows: NomineeRow[] = nomineeEntries.map((entry: NominationEntry) => ({id: entry.id, nomineeName: entry.nomineeName,
-    positionName: entry.positionName, nominatedBy: entry.nominatorName || '—', submittedAt: entry.submittedAt}));
+    nominee: entry.nomineeEligible ? 'YES' : '', positionName: entry.positionName, nominatedBy: entry.nominatorName || '—', submittedAt: entry.submittedAt}));
   const youthRows: YouthRow[] = youthRecords.map((record) => ({id: record.id, memberId: record.memberId, name: record.name,
     ageGroup: record.ageGroup, importedAt: record.importedAt}));
   const currentNomineesPage = nomineesPage;
@@ -245,7 +246,7 @@ export function NominationEditor({id}: {id: string}) {
   const canEdit = nomination.status === 'Draft';
 
   return <main className="admin-page event-editor-page">
-    <Button label="Back to nominations" href="/admin/nominations" variant="ghost" icon={<ArrowLeftIcon />}>Back to nominations</Button>
+    <Button label="Back to nominations" href="/nominations" variant="ghost" icon={<ArrowLeftIcon />}>Back to nominations</Button>
     <header className="admin-page-header event-editor-header">
       <VStack gap={2}>
         <HStack gap={3} align="center" wrap="wrap"><Heading level={1}>{nomination.name}</Heading>
@@ -303,6 +304,7 @@ export function NominationEditor({id}: {id: string}) {
       {collectionError ? <Banner status="error" title="Nominees could not be loaded" description={collectionError} container="section" /> : null}
       {collectionLoading ? <Skeleton width="100%" height="var(--spacing-12)" index={0} /> : nomineeRows.length ? <section className="table-surface" aria-label="Nominees"><Table<NomineeRow> data={nomineeRows} idKey="id" rowIndexStart={(currentNomineesPage - 1) * PAGE_SIZE + 1} rowCount={nomineeTotal} columns={[
         {key: 'nomineeName', header: 'Name', width: proportional(2)},
+        {key: 'nominee', header: 'Nominee', width: pixel(100)},
         {key: 'positionName', header: 'Position nominated', width: proportional(2)},
         {key: 'nominatedBy', header: 'Nominated by', width: proportional(2)},
         {key: 'submittedAt', header: 'Submitted at', width: proportional(2), renderCell: (row) => formatDate(row.submittedAt)},
@@ -391,7 +393,8 @@ export function NominationEditor({id}: {id: string}) {
     </Dialog>
     <AlertDialog isOpen={Boolean(removeTarget)} onOpenChange={(open) => {if (!open) setRemoveTarget(null);}} title={`Remove ${removeTarget?.name ?? 'item'}?`}
       description={removeTarget?.type === 'delete-position' ? 'This also removes all submitted nominees for this position.' : 'This removes this nominee row from the nomination.'} actionLabel="Remove" actionVariant="destructive"
-      onAction={() => {if (!removeTarget) return; void mutate({type: removeTarget.type, [removeTarget.type === 'delete-position' ? 'positionId' : 'nomineeId']: removeTarget.id}, removeTarget.name).then((saved) => {if (saved) setRemoveTarget(null);});}} />
+      isActionLoading={isRemovingTarget}
+      onAction={() => {if (!removeTarget) return; setIsRemovingTarget(true); void mutate({type: removeTarget.type, [removeTarget.type === 'delete-position' ? 'positionId' : 'nomineeId']: removeTarget.id}, removeTarget.name).then((saved) => {if (saved) setRemoveTarget(null);}).finally(() => setIsRemovingTarget(false));}} />
     <AlertDialog isOpen={replaceYouthOpen} onOpenChange={setReplaceYouthOpen} title="Replace all Youth Records?"
       description="Choose a CSV to replace the current list. Names already submitted as nominees will remain in the Nominees table."
       actionLabel="Choose replacement CSV" onAction={() => {setReplaceYouthOpen(false); replaceYouthInputRef.current?.click();}} />

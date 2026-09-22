@@ -52,7 +52,7 @@ export function NominationDashboard() {
       const nomination = await createNomination(name, description);
       setCreateOpen(false);
       toast({body: 'Nomination draft created.'});
-      router.push(`/admin/nominations/${nomination.id}`);
+      router.push(`/nominations/${nomination.id}`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not create nomination.'); }
     finally { setSaving(false); }
   }
@@ -85,7 +85,7 @@ export function NominationDashboard() {
                   <article><Text type="supporting" color="secondary">Youth Records</Text><Text type="large" weight="semibold">{nomination.youthRecordCount}</Text></article>
                 </section>
                 <HStack gap={3} justify="end">
-                  <Button label={`Manage ${nomination.name}`} href={`/admin/nominations/${nomination.id}`} variant="secondary">Manage nomination</Button>
+                  <Button label={`Manage ${nomination.name}`} href={`/nominations/${nomination.id}`} variant="secondary">Manage nomination</Button>
                   {nomination.status === 'Published' || nomination.status === 'Scheduled' ? (
                     <Button label={`Open form for ${nomination.name}`} href={`/nominate/${nomination.slug}`} target="_blank" rel="noopener noreferrer" variant="secondary" endContent={<ArrowUpRightIcon />}>Form</Button>
                   ) : null}

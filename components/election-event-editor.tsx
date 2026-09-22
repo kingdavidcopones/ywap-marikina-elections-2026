@@ -172,6 +172,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
   const [eventEditError, setEventEditError] = useState<string | null>(null);
   const [editingCandidate, setEditingCandidate] = useState<CandidateTarget | null>(null);
   const [deletingCandidate, setDeletingCandidate] = useState<CandidateTarget | null>(null);
+  const [isRemovingCandidate, setIsRemovingCandidate] = useState(false);
   const [candidateVoter, setCandidateVoter] = useState<VoterItem | null>(null);
   const [candidateEditImage, setCandidateEditImage] = useState<File | null>(null);
   const [isUpdatingCandidate, setIsUpdatingCandidate] = useState(false);
@@ -389,7 +390,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       await removeElection(election.id);
       setIsDeletingEvent(false);
       toast({body: `${election.title} was deleted.`, uniqueID: 'election-deleted'});
-      router.push('/admin');
+      router.push('/');
     } catch (cause) {
       toast({body: cause instanceof Error ? cause.message : 'The election could not be deleted.', type: 'error', uniqueID: 'election-delete-error'});
     }
@@ -444,7 +445,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     }
   }
 
-  function deleteCandidate() {
+  async function deleteCandidate() {
     if (!election || !deletingCandidate) return;
     if (isDeletionLocked(election.status)) {
       toast({body: `Candidates can’t be removed while this election is ${election.status.toLocaleLowerCase('en')}.`, type: 'error', uniqueID: 'candidate-delete-blocked'});
@@ -455,9 +456,16 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       ...position,
       nominees: position.nominees.filter((nominee) => nominee.id !== deletingCandidate.nomineeId),
     } : position);
-    persist({...election, positions: updatedPositions});
-    toast({body: `${deletingCandidate.name} was removed from this ballot.`, uniqueID: 'candidate-removed'});
-    setDeletingCandidate(null);
+    setIsRemovingCandidate(true);
+    try {
+      setElection(await saveElection({...election, positions: updatedPositions}));
+      toast({body: `${deletingCandidate.name} was removed from this ballot.`, uniqueID: 'candidate-removed'});
+      setDeletingCandidate(null);
+    } catch (cause) {
+      toast({body: cause instanceof Error ? cause.message : 'The candidate could not be removed.', type: 'error', uniqueID: 'candidate-delete-error'});
+    } finally {
+      setIsRemovingCandidate(false);
+    }
   }
 
   function resetPositionForm() {
@@ -703,7 +711,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
   return (
     <main className="admin-page event-editor-page">
       {loadError ? <Banner status="error" title="Voter records could not be loaded" description={loadError} container="section" /> : null}
-      <Button label="Back to elections" href="/admin" variant="ghost" icon={<ArrowLeftIcon />}>Back to elections</Button>
+      <Button label="Back to elections" href="/" variant="ghost" icon={<ArrowLeftIcon />}>Back to elections</Button>
 
       <header className="admin-page-header event-editor-header">
         <VStack gap={2}>
@@ -1495,6 +1503,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
         title="Remove this candidate?"
         description={`${deletingCandidate?.name ?? 'This candidate'} will no longer appear on this ballot.`}
         actionLabel="Remove candidate"
+        isActionLoading={isRemovingCandidate}
         onAction={deleteCandidate}
       />
     </main>

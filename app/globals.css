@@ -755,7 +755,7 @@ progress::-moz-progress-bar {
     padding: var(--spacing-6) var(--spacing-4);
   }
 
-  .review-row > * > * {
+  .review-row-body {
     align-items: flex-start;
   }
 

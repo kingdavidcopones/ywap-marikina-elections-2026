@@ -146,18 +146,16 @@ export async function getElectionResults(identifier: string, publicOnly = false)
 export async function getIndividualElectionResults(identifier: string): Promise<IndividualVoteRecord[] | null> {
   const election = await getElection(identifier);
   if (!election) return null;
-  if (election.anonymousVoting) throw new Error('Individual records are not available for an anonymous election.');
 
   const supabase = createServerSupabaseClient();
   const submittedBallots = await fetchAllRows((from, to) => supabase.from('anonymous_ballots')
     .select('id, eligible_voter_id, submitted_at')
     .eq('election_id', election.id)
-    .not('eligible_voter_id', 'is', null)
     .order('submitted_at', {ascending: false}).order('id').range(from, to));
   if (!submittedBallots.length) return [];
 
   const [voters, selections] = await Promise.all([
-    fetchAllRows((from, to) => supabase.from('eligible_voters').select('id, member_id, first_name, last_name, age_group')
+    election.anonymousVoting ? Promise.resolve([]) : fetchAllRows((from, to) => supabase.from('eligible_voters').select('id, member_id, first_name, last_name, age_group')
       .eq('election_id', election.id).order('id').range(from, to)),
     fetchAllRows((from, to) => supabase.from('ballot_selections')
       .select('id, anonymous_ballot_id, position_id, nominee_id, is_abstain, anonymous_ballots!inner(election_id)')
