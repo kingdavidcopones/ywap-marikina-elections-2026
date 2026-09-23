@@ -1,34 +1,44 @@
 'use client';
 
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import dynamic from 'next/dynamic';
 import {fetchElectionAvailability, type ElectionAvailability} from '@/lib/api';
-import {getSubmissionReceipt, getVoterSession} from '@/lib/voter-session';
-import {VoterFlowSkeleton} from './loading-states';
+import {consumeVerificationTransition, getSubmissionReceipt, getVoterSession} from '@/lib/voter-session';
+import {VerifiedBallotSkeleton, VoterEntryLoading, VoterFlowSkeleton} from './loading-states';
 import {VoterLinkState} from './voter-link-state';
 
 const BallotFlow = dynamic(
   () => import('./ballot-flow').then((module) => module.BallotFlow),
   {loading: () => <VoterFlowSkeleton />},
 );
+const VerifiedBallotFlow = dynamic(
+  () => import('./ballot-flow').then((module) => module.BallotFlow),
+  {loading: () => <VerifiedBallotSkeleton />},
+);
 const BallotConfirmation = dynamic(
   () => import('./ballot-confirmation').then((module) => module.BallotConfirmation),
-  {loading: () => <VoterFlowSkeleton />},
+  {loading: () => <VoterEntryLoading />},
 );
 const VoterAccess = dynamic(
   () => import('./voter-access').then((module) => module.VoterAccess),
-  {loading: () => <VoterFlowSkeleton />},
+  {loading: () => <VoterEntryLoading />},
 );
 
 export function EventBallot({ballotSlug}: {ballotSlug: string}) {
+  const transitionRef = useRef<{ballotSlug: string; fromVerification: boolean} | null>(null);
   const [verified, setVerified] = useState<boolean | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState<boolean | null>(null);
   const [availability, setAvailability] = useState<ElectionAvailability | null | undefined>(undefined);
+  const [fromVerification, setFromVerification] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     const session = getVoterSession();
     const receipt = getSubmissionReceipt();
+    if (transitionRef.current?.ballotSlug !== ballotSlug) {
+      transitionRef.current = {ballotSlug, fromVerification: consumeVerificationTransition(ballotSlug)};
+    }
+    setFromVerification(transitionRef.current.fromVerification);
     setVerified(session?.ballotSlug === ballotSlug);
     setHasSubmitted(Boolean(
       receipt
@@ -44,7 +54,7 @@ export function EventBallot({ballotSlug}: {ballotSlug: string}) {
     return () => window.clearInterval(timer);
   }, [availability?.closesAt, availability?.opensAt]);
 
-  if (verified === null || hasSubmitted === null || availability === undefined) return <VoterFlowSkeleton />;
+  if (verified === null || hasSubmitted === null || availability === undefined) return <VoterEntryLoading />;
   if (hasSubmitted) return <BallotConfirmation />;
   if (!availability) return <VoterLinkState kind="unavailable" />;
 
@@ -60,6 +70,12 @@ export function EventBallot({ballotSlug}: {ballotSlug: string}) {
   if (!isVotingStatus || isBeforeStart || isAfterClose) {
     return <VoterLinkState kind="unavailable" electionTitle={availability.title} />;
   }
-  if (!verified) return <VoterAccess ballotSlug={ballotSlug} onVerified={() => setVerified(true)} />;
-  return <BallotFlow ballotSlug={ballotSlug} />;
+  if (!verified) return <VoterAccess ballotSlug={ballotSlug} onVerified={() => {
+    transitionRef.current = {ballotSlug, fromVerification: true};
+    setFromVerification(true);
+    setVerified(true);
+  }} />;
+  return fromVerification
+    ? <VerifiedBallotFlow ballotSlug={ballotSlug} fromVerification />
+    : <BallotFlow ballotSlug={ballotSlug} />;
 }

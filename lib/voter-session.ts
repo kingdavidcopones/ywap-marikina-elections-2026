@@ -21,6 +21,25 @@ export type SubmissionReceipt = {
 const VOTER_KEY = 'ywap-voter-session';
 const DRAFT_KEY = 'ywap-ballot-draft';
 const SUBMITTED_KEY = 'ywap-ballot-submitted';
+const VERIFICATION_TRANSITION_KEY = 'ywap-verification-transition';
+
+export function markVerificationTransition(ballotSlug: string) {
+  window.sessionStorage.setItem(VERIFICATION_TRANSITION_KEY, JSON.stringify({ballotSlug, startedAt: Date.now()}));
+}
+
+export function consumeVerificationTransition(ballotSlug: string): boolean {
+  if (typeof window === 'undefined') return false;
+  const value = window.sessionStorage.getItem(VERIFICATION_TRANSITION_KEY);
+  window.sessionStorage.removeItem(VERIFICATION_TRANSITION_KEY);
+  if (!value) return false;
+  try {
+    const transition = JSON.parse(value) as {ballotSlug?: string; startedAt?: number};
+    return transition.ballotSlug === ballotSlug && typeof transition.startedAt === 'number'
+      && Date.now() - transition.startedAt < 60_000;
+  } catch {
+    return false;
+  }
+}
 
 export function getVoterSession(): VoterSession | null {
   if (typeof window === 'undefined') return null;
@@ -88,4 +107,5 @@ export function clearVoterSession() {
   window.sessionStorage.removeItem(VOTER_KEY);
   window.sessionStorage.removeItem(DRAFT_KEY);
   window.sessionStorage.removeItem(SUBMITTED_KEY);
+  window.sessionStorage.removeItem(VERIFICATION_TRANSITION_KEY);
 }

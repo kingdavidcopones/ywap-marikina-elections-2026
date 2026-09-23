@@ -1,9 +1,26 @@
+import Image from 'next/image';
 import {AppShell} from '@astryxdesign/core/AppShell';
 import {Card} from '@astryxdesign/core/Card';
 import {Grid} from '@astryxdesign/core/Grid';
 import {HStack, VStack} from '@astryxdesign/core/Layout';
 import {Section} from '@astryxdesign/core/Section';
 import {Skeleton} from '@astryxdesign/core/Skeleton';
+import {Spinner} from '@astryxdesign/core/Spinner';
+
+export function VoterEntryLoading() {
+  return (
+    <AppShell height="fill" variant="wash" contentPadding={0}>
+      <Section variant="transparent" padding={6} className="access-page animated-mesh-gradient-background" width="100%" aria-busy="true" aria-label="Loading election">
+        <VStack gap={6} className="access-stack" hAlign="center">
+          <header className="access-brand">
+            <Image src="/brand/ywap-marikina-elections-logo-word.svg" alt="YWAP Marikina Elections 2026" width={172} height={50} priority />
+          </header>
+          <Spinner size="lg" label="Loading election…" />
+        </VStack>
+      </Section>
+    </AppShell>
+  );
+}
 
 function PageHeadingSkeleton({hasAction = false}: {hasAction?: boolean}) {
   return (
@@ -132,6 +149,39 @@ export function ElectionEditorSkeleton() {
 }
 
 export function VoterFlowSkeleton() {
+  return (
+    <AppShell height="fill" variant="wash" contentPadding={0}>
+      <main className="ballot-page" aria-busy="true" aria-label="Loading your ballot">
+        <header className="ballot-topbar" aria-hidden="true">
+          <Skeleton width="calc(var(--spacing-8) * 5)" height="var(--spacing-10)" index={0} />
+          <Skeleton width="32%" height="var(--spacing-4)" index={1} />
+        </header>
+        <section className="ballot-progress" aria-hidden="true">
+          <Skeleton width="100%" height="var(--spacing-2)" radius="rounded" index={2} />
+        </section>
+        <section className="ballot-grid" aria-hidden="true">
+          <VStack gap={6}>
+            <Skeleton width="42%" height="var(--spacing-4)" index={3} />
+            <Skeleton width="78%" height="var(--spacing-8)" index={4} />
+            <Skeleton width="100%" height="calc(var(--spacing-8) * 4)" index={5} />
+          </VStack>
+          <VStack gap={4}>
+            <Skeleton width="62%" height="var(--spacing-8)" index={6} />
+            <Skeleton width="100%" height="calc(var(--spacing-10) * 2)" index={7} />
+            <Skeleton width="100%" height="calc(var(--spacing-10) * 2)" index={8} />
+            <Skeleton width="100%" height="calc(var(--spacing-10) * 2)" index={9} />
+          </VStack>
+        </section>
+        <footer className="ballot-actions" aria-hidden="true">
+          <Skeleton width="calc(var(--spacing-8) * 3)" height="var(--spacing-10)" index={10} />
+          <Skeleton width="calc(var(--spacing-8) * 4)" height="var(--spacing-10)" index={11} />
+        </footer>
+      </main>
+    </AppShell>
+  );
+}
+
+export function VerifiedBallotSkeleton() {
   return (
     <AppShell height="fill" variant="wash" contentPadding={0}>
       <main className="ballot-page" aria-busy="true" aria-label="Loading your ballot">

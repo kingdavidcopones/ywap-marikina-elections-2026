@@ -26,9 +26,9 @@ import {
 import {fetchElection, fetchEligiblePositionIds} from '@/lib/api';
 import {getBallotDraft, getVoterSession, saveBallotDraft, saveVoterSession, type VoterSession} from '@/lib/voter-session';
 import {AccessGate} from './access-gate';
-import {VoterFlowSkeleton} from './loading-states';
+import {VerifiedBallotSkeleton, VoterFlowSkeleton} from './loading-states';
 
-export function BallotFlow({ballotSlug}: {ballotSlug?: string}) {
+export function BallotFlow({ballotSlug, fromVerification = false}: {ballotSlug?: string; fromVerification?: boolean}) {
   const router = useRouter();
   const [voter, setVoter] = useState<VoterSession | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -107,7 +107,7 @@ export function BallotFlow({ballotSlug}: {ballotSlug?: string}) {
     router.push('/access');
   }
 
-  if (!ready) return <VoterFlowSkeleton />;
+  if (!ready) return fromVerification ? <VerifiedBallotSkeleton /> : <VoterFlowSkeleton />;
   if (!voter || !election) return <AccessGate />;
   if (!current) {
     return (

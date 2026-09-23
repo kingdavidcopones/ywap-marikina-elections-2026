@@ -12,8 +12,9 @@ import {VStack} from '@astryxdesign/core/Layout';
 import {Section} from '@astryxdesign/core/Section';
 import {Text} from '@astryxdesign/core/Text';
 import {TextInput} from '@astryxdesign/core/TextInput';
-import {saveVoterSession, type VoterSession} from '@/lib/voter-session';
+import {markVerificationTransition, saveVoterSession, type VoterSession} from '@/lib/voter-session';
 import {isNetworkError, reportNetworkError} from '@/lib/network-error';
+import {VerifiedBallotSkeleton} from './loading-states';
 
 export function VoterAccess({ballotSlug, onVerified}: {ballotSlug?: string; onVerified?: () => void}) {
   const router = useRouter();
@@ -21,6 +22,7 @@ export function VoterAccess({ballotSlug, onVerified}: {ballotSlug?: string; onVe
   const [lastName, setLastName] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [navigatingToBallot, setNavigatingToBallot] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -42,6 +44,8 @@ export function VoterAccess({ballotSlug, onVerified}: {ballotSlug?: string; onVe
         return;
       }
       saveVoterSession(result.voter);
+      if (!onVerified && result.voter.ballotSlug) markVerificationTransition(result.voter.ballotSlug);
+      setNavigatingToBallot(true);
       onVerified?.();
       router.push(`/vote/${result.voter.ballotSlug}`);
     } catch (cause) {
@@ -51,6 +55,8 @@ export function VoterAccess({ballotSlug, onVerified}: {ballotSlug?: string; onVe
       setIsLoading(false);
     }
   }
+
+  if (navigatingToBallot) return <VerifiedBallotSkeleton />;
 
   return (
     <AppShell height="fill" variant="wash" contentPadding={0}>
