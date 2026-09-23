@@ -23,6 +23,7 @@ import {CheckboxInput} from '@astryxdesign/core/CheckboxInput';
 import {CheckboxList, CheckboxListItem} from '@astryxdesign/core/CheckboxList';
 import {DateTimeInput, type ISODateTimeString} from '@astryxdesign/core/DateTimeInput';
 import {Dialog, DialogHeader} from '@astryxdesign/core/Dialog';
+import {Divider} from '@astryxdesign/core/Divider';
 import {DropdownMenu} from '@astryxdesign/core/DropdownMenu';
 import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {FormLayout} from '@astryxdesign/core/FormLayout';
@@ -51,6 +52,7 @@ interface PositionRow extends Record<string, unknown> { id: string; name: string
 interface NomineeRow extends Record<string, unknown> { id: string; nomineeName: string; nominee: string; positionName: string; nominatedBy: string; submittedAt: string; }
 interface NomineeSearchItem extends SearchableItem<{filter: string}> { auxiliaryData: {filter: string}; }
 interface YouthRow extends Record<string, unknown> { id: string; memberId: string; name: string; ageGroup: string; importedAt: string; }
+type MappedNomineeCard = {entry: NominationEntry; nominationCount: number};
 type UploadRecord = Omit<YouthRecord, 'id' | 'name' | 'importedAt'>;
 type RemoveTarget = {type: 'delete-position' | 'delete-nominee'; id: string; name: string};
 const PAGE_SIZE = 10;
@@ -64,6 +66,27 @@ function toIso(value?: ISODateTimeString) {
   if (!value) return '';
   const timestamp = Date.parse(`${value.length === 16 ? `${value}:00` : value}+08:00`);
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : '';
+}
+
+function consolidateMappedNominees(entries: NominationEntry[]): MappedNomineeCard[] {
+  const consolidatedByPositionAndRecord = new Map<string, MappedNomineeCard>();
+  const cards: MappedNomineeCard[] = [];
+  for (const entry of entries) {
+    if (!entry.youthRecordId) {
+      cards.push({entry, nominationCount: 1});
+      continue;
+    }
+    const key = `${entry.positionId}:${entry.youthRecordId}`;
+    const existing = consolidatedByPositionAndRecord.get(key);
+    if (existing) {
+      existing.nominationCount += 1;
+      continue;
+    }
+    const card = {entry, nominationCount: 1};
+    consolidatedByPositionAndRecord.set(key, card);
+    cards.push(card);
+  }
+  return cards;
 }
 
 function parseYouthCsv(csv: string): UploadRecord[] {
@@ -372,13 +395,15 @@ export function NominationEditor({id}: {id: string}) {
         {key: 'id', header: 'Action', width: pixel(120), renderCell: (row) => <Button label={`Remove ${row.nomineeName}`} size="sm" variant="ghost" icon={<TrashIcon />} onClick={() => setRemoveTarget({type: 'delete-nominee', id: row.id, name: row.nomineeName})}>Remove</Button>},
       ]} />{filteredNomineeRows.length > PAGE_SIZE ? <footer className="table-pagination"><Pagination page={currentNomineesPage} onChange={setNomineesPage} totalItems={filteredNomineeRows.length} pageSize={PAGE_SIZE} variant="pages" size="sm" label="Nominee pages" /></footer> : null}</section> : <section className="nominee-board" aria-label="Nominees mapped by position">{nomination.positions.map((position) => {
         const entries = filteredNomineeEntries.filter((entry) => entry.positionId === position.id);
-        return <article className="nominee-board-column" key={position.id} aria-label={`${position.name}: ${entries.length} nominees`}><HStack className="nominee-board-column-header" gap={2} align="center" justify="between"><Heading level={3} weight="medium" maxLines={1}>{position.name}</Heading><Badge variant="neutral" label={entries.length} /></HStack>
-          <VStack gap={2}>{entries.length ? entries.map((entry) => <Card key={entry.id} padding={3} {...mergeProps(getContainerProps({hoverDelay: 100}), {className: 'nominee-board-card'})}>
-            <IconButton {...mergeProps(getContentRevealProps({isLayoutPreserved: true}), {className: 'nominee-board-card-remove'})} label={`Remove ${entry.nomineeName}`} tooltip="Remove nominee" size="sm" variant="destructive" icon={<TrashIcon />} onClick={() => setRemoveTarget({type: 'delete-nominee', id: entry.id, name: entry.nomineeName})} />
+        const cards = consolidateMappedNominees(entries);
+        return <article className="nominee-board-column" key={position.id} aria-label={`${position.name}: ${cards.length} nominees`}><HStack className="nominee-board-column-header" gap={2} align="center" justify="between"><Heading level={3} weight="medium" maxLines={1}>{position.name}</Heading><Badge variant="neutral" label={cards.length} /></HStack>
+          <VStack gap={2}>{cards.length ? cards.map(({entry, nominationCount}) => <Card key={entry.id} padding={3} {...mergeProps(getContainerProps({hoverDelay: 100}), {className: 'nominee-board-card'})}>
+            <IconButton {...mergeProps(getContentRevealProps({isLayoutPreserved: true}), {className: 'nominee-board-card-remove'})} label={nominationCount > 1 ? `Remove latest nomination for ${entry.nomineeName}` : `Remove ${entry.nomineeName}`} tooltip={nominationCount > 1 ? 'Remove latest nomination' : 'Remove nominee'} size="sm" variant="destructive" icon={<TrashIcon />} onClick={() => setRemoveTarget({type: 'delete-nominee', id: entry.id, name: entry.nomineeName})} />
             <VStack gap={2}>
               <HStack gap={2} wrap="wrap">{entry.nomineeEligible ? <HStack gap={1} align="center"><StatusDot label="Eligible" variant="success" /><Text type="supporting">Eligible</Text></HStack> : null}{!entry.youthRecordId ? <HStack gap={1} align="center"><StatusDot label="Pending review" variant="warning" /><Text type="supporting">Pending review</Text></HStack> : null}</HStack>
               <VStack gap={0.5}><Text weight="semibold">{entry.nomineeName}</Text><Text type="supporting" color="secondary">{entry.youthRecordId ? entry.ageGroup ?? 'In records' : 'Not in records'}</Text></VStack>
               <HStack gap={1} align="center"><ClockIcon aria-hidden="true" /><Text type="supporting" color="secondary">{formatDate(entry.submittedAt)}</Text></HStack>
+              {nominationCount > 1 ? <><Divider isFullBleed /><HStack gap={2} align="center" justify="between"><Text type="supporting">Total Nominations:</Text><Badge variant="green" label={nominationCount} /></HStack></> : null}
             </VStack>
           </Card>) : <Card padding={4} variant="muted"><EmptyState title="No nominees yet" description={normalizedNomineeFilter ? 'No nominees match this search.' : 'People awaiting nomination appear here.'} isCompact /></Card>}</VStack>
         </article>;
