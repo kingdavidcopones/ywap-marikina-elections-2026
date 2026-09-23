@@ -93,7 +93,7 @@ test('same-surname voters get separate filtered ballots and mocked submissions',
   await chooseAndSubmit('Teens Representative', 'Teens Candidate');
   await expect(recorded.get('YWAP-1')).toEqual({'general': 'general-candidate', 'teens': 'teens-candidate'});
 
-  await page.getByRole('link', {name: 'Done'}).click();
+  await page.getByRole('button', {name: 'Done'}).click();
   await expect(page.getByRole('heading', {name: 'Let’s find your voter record'})).toBeVisible();
   await verify('YWAP-2');
   await expect(page.getByRole('heading', {name: 'President', exact: true}).first()).toBeVisible();
@@ -106,7 +106,7 @@ test('same-surname voters get separate filtered ballots and mocked submissions',
 
   await page.reload();
   await expect(page.getByRole('heading', {name: 'Your ballot is in'})).toBeVisible();
-  await page.getByRole('link', {name: 'Done'}).click();
+  await page.getByRole('button', {name: 'Done'}).click();
   await verify('YWAP-1');
   await expect(page.getByText('A ballot has already been submitted for this voter.')).toBeVisible();
   expect(recorded.size).toBe(2);

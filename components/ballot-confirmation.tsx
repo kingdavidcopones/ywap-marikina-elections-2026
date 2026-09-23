@@ -2,6 +2,7 @@
 
 import {useEffect, useState} from 'react';
 import Image from 'next/image';
+import {useRouter} from 'next/navigation';
 import {AppShell} from '@astryxdesign/core/AppShell';
 import {Button} from '@astryxdesign/core/Button';
 import {Card} from '@astryxdesign/core/Card';
@@ -10,6 +11,7 @@ import {VStack} from '@astryxdesign/core/Layout';
 import {Text} from '@astryxdesign/core/Text';
 import {fetchElection} from '@/lib/api';
 import {
+  clearVoterSession,
   getSubmissionReceipt,
   getVoterSession,
   markSubmitted,
@@ -18,7 +20,8 @@ import {
 import {AccessGate} from './access-gate';
 import {BallotConfetti} from './ballot-confetti';
 
-export function BallotConfirmation() {
+export function BallotConfirmation({onDone}: {onDone?: () => void}) {
+  const router = useRouter();
   const [receipt, setReceipt] = useState<SubmissionReceipt | null | undefined>(undefined);
 
   useEffect(() => {
@@ -60,6 +63,16 @@ export function BallotConfirmation() {
   if (receipt === undefined) return null;
   if (!receipt) return <AccessGate title="We couldn’t find a submitted ballot" />;
 
+  function finish() {
+    const destination = receipt?.ballotSlug ? `/vote/${receipt.ballotSlug}` : '/vote';
+    clearVoterSession();
+    if (onDone) {
+      onDone();
+      return;
+    }
+    router.replace(destination);
+  }
+
   return (
     <AppShell height="fill" variant="wash" contentPadding={0}>
       <BallotConfetti />
@@ -86,7 +99,7 @@ export function BallotConfirmation() {
                   ? 'Your ballot has been successfully recorded.'
                   : 'To protect your privacy, we don’t show your choices or create a code that could be linked back to them.'}
               </Text>
-              <Button label="Done" href={receipt.ballotSlug ? `/vote/${receipt.ballotSlug}` : '/vote'} as="a" variant="primary" width="100%" />
+              <Button label="Done" onClick={finish} variant="primary" width="100%" />
             </VStack>
           </Card>
         </VStack>

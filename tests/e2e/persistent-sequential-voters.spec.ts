@@ -102,7 +102,7 @@ test('two same-surname voters submit only filtered positions and persist separat
 
     await page.goto(`/vote/${slug}`);
     await vote(teenMemberId, 'Teens Representative', 'Teens Candidate');
-    await page.getByRole('link', {name: 'Done'}).click();
+    await page.getByRole('button', {name: 'Done'}).click();
     await expect(page.getByRole('heading', {name: 'Let’s find your voter record'})).toBeVisible();
     await vote(youngMemberId, 'Youth Delegate', 'Youth Candidate');
 

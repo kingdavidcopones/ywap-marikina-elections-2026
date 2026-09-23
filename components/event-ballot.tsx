@@ -55,7 +55,10 @@ export function EventBallot({ballotSlug}: {ballotSlug: string}) {
   }, [availability?.closesAt, availability?.opensAt]);
 
   if (verified === null || hasSubmitted === null || availability === undefined) return <VoterEntryLoading />;
-  if (hasSubmitted) return <BallotConfirmation />;
+  if (hasSubmitted) return <BallotConfirmation onDone={() => {
+    setHasSubmitted(false);
+    setVerified(false);
+  }} />;
   if (!availability) return <VoterLinkState kind="unavailable" />;
 
   const startsAt = availability.opensAt ? new Date(availability.opensAt).getTime() : Number.NaN;
