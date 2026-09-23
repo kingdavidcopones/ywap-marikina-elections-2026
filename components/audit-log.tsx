@@ -33,7 +33,6 @@ export function AuditLog() {
     <main className="admin-page">
       <header className="admin-page-header">
         <VStack gap={2}>
-          <Text type="label" color="accent">Election history</Text>
           <Heading level={1}>Audit log</Heading>
           <Text color="secondary">See what changed and when. This version doesn’t record which administrator made each change.</Text>
         </VStack>

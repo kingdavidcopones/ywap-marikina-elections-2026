@@ -20,7 +20,6 @@ body {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  border-bottom: var(--spacing-1) solid var(--color-accent);
 }
 
 .nomination-access-page {
