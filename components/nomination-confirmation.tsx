@@ -9,7 +9,7 @@ import {VStack} from '@astryxdesign/core/Layout';
 import {Text} from '@astryxdesign/core/Text';
 import {BallotConfetti} from '@/components/ballot-confetti';
 
-export function NominationConfirmation({nominationName, submittedAt}: {nominationName: string; submittedAt: string}) {
+export function NominationConfirmation({nominationName, submittedAt, slug}: {nominationName: string; submittedAt: string; slug: string}) {
   return <AppShell height="fill" variant="wash" contentPadding={0}>
     <BallotConfetti />
     <main className="confirmation-page">
@@ -29,7 +29,7 @@ export function NominationConfirmation({nominationName, submittedAt}: {nominatio
               <dd>Recorded</dd>
             </dl>
             <Text type="supporting" color="secondary" as="p">Your nominations have been recorded.</Text>
-            <Button label="Done" href="/access" variant="primary" width="100%" />
+            <Button label="Done" href={`/nominate/${slug}`} as="a" variant="primary" width="100%" />
           </VStack>
         </Card>
       </VStack>

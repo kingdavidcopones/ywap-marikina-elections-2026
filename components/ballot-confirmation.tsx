@@ -86,7 +86,7 @@ export function BallotConfirmation() {
                   ? 'Your ballot has been successfully recorded.'
                   : 'To protect your privacy, we don’t show your choices or create a code that could be linked back to them.'}
               </Text>
-              <Button label="Done" href="/access" variant="primary" width="100%" />
+              <Button label="Done" href={receipt.ballotSlug ? `/vote/${receipt.ballotSlug}` : '/vote'} as="a" variant="primary" width="100%" />
             </VStack>
           </Card>
         </VStack>

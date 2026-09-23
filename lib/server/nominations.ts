@@ -45,7 +45,8 @@ function mapNomineeEntry(entry: any, names: Map<string, string>): NominationEntr
   return {id: entry.id, nomineeName: entry.nominee_name, positionId: entry.position_id,
     positionName: names.get(entry.position_id) ?? 'Deleted position', youthRecordId: entry.youth_record_id ?? undefined,
     submittedAt: entry.submitted_at, nominatorName: entry.nomination_submissions?.nominator_name ?? undefined,
-    nomineeEligible: (entry.nomination_youth_records?.attributes?.nominee ?? '').trim().toLocaleLowerCase('en') === 'yes'};
+    nomineeEligible: (entry.nomination_youth_records?.attributes?.nominee ?? '').trim().toLocaleLowerCase('en') === 'yes',
+    ageGroup: entry.nomination_youth_records?.age_group ?? undefined};
 }
 
 function mapRecord(row: any): YouthRecord {
@@ -98,7 +99,7 @@ export async function getNominationNominees(id: string, page: number) {
   if (!Number.isInteger(page) || page < 1) throw new NominationError('Choose a valid page.');
   const from = (page - 1) * 10;
   const {data, count, error} = await createServerSupabaseClient().from('nomination_entries')
-    .select('id, nominee_name, position_id, youth_record_id, submitted_at, nomination_submissions(nominator_name), nomination_youth_records(attributes)', {count: 'exact'})
+    .select('id, nominee_name, position_id, youth_record_id, submitted_at, nomination_submissions(nominator_name), nomination_youth_records(attributes, age_group)', {count: 'exact'})
     .eq('nomination_id', nomination.id).order('submitted_at', {ascending: false}).order('id').range(from, from + 9);
   check(error);
   const names = new Map(nomination.positions.map((position) => [position.id, position.name]));
@@ -109,7 +110,7 @@ export async function getAllNominationNominees(id: string) {
   const nomination = await getNomination(id, true);
   if (!nomination) throw new NominationError('Nomination not found.', 404);
   const rows = await allRows<any>((from, to) => createServerSupabaseClient().from('nomination_entries')
-    .select('id, nominee_name, position_id, youth_record_id, submitted_at, nomination_submissions(nominator_name), nomination_youth_records(attributes)')
+    .select('id, nominee_name, position_id, youth_record_id, submitted_at, nomination_submissions(nominator_name), nomination_youth_records(attributes, age_group)')
     .eq('nomination_id', nomination.id).order('submitted_at', {ascending: false}).order('id').range(from, to));
   const names = new Map(nomination.positions.map((position) => [position.id, position.name]));
   return rows.map((entry) => mapNomineeEntry(entry, names));

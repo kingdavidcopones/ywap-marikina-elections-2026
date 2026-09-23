@@ -47,6 +47,7 @@ export type NominationEntry = {
   submittedAt: string;
   nominatorName?: string;
   nomineeEligible: boolean;
+  ageGroup?: string;
 };
 
 export type Nomination = {

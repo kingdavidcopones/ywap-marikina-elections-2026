@@ -143,21 +143,66 @@ export function VoterFlowSkeleton() {
           <Skeleton width="100%" height="var(--spacing-2)" radius="rounded" index={2} />
         </section>
         <section className="ballot-grid" aria-hidden="true">
-          <VStack gap={6}>
-            <Skeleton width="42%" height="var(--spacing-4)" index={3} />
-            <Skeleton width="78%" height="var(--spacing-8)" index={4} />
-            <Skeleton width="100%" height="calc(var(--spacing-8) * 4)" index={5} />
+          <VStack gap={8}>
+            <VStack gap={1}>
+              <Skeleton width="34%" height="var(--spacing-4)" index={3} />
+              <Skeleton width="68%" height="var(--spacing-8)" index={4} />
+            </VStack>
+            <Card variant="muted" padding={6}>
+              <VStack gap={3}>
+                <Skeleton width="44%" height="var(--spacing-5)" index={5} />
+                <VStack gap={2}>
+                  <Skeleton width="100%" height="var(--spacing-4)" index={6} />
+                  <Skeleton width="88%" height="var(--spacing-4)" index={7} />
+                  <Skeleton width="56%" height="var(--spacing-4)" index={8} />
+                </VStack>
+              </VStack>
+            </Card>
+            <Card variant="muted" padding={6}>
+              <VStack gap={4}>
+                <Skeleton width="48%" height="var(--spacing-5)" index={9} />
+                <VStack gap={3}>
+                  {[0, 1, 2].map((index) => (
+                    <HStack key={index} gap={3} align="center">
+                      <Skeleton width="var(--spacing-4)" height="var(--spacing-4)" radius="rounded" index={index + 10} />
+                      <Skeleton width={index === 2 ? '64%' : '82%'} height="var(--spacing-4)" index={index + 13} />
+                    </HStack>
+                  ))}
+                </VStack>
+              </VStack>
+            </Card>
           </VStack>
-          <VStack gap={4}>
-            <Skeleton width="62%" height="var(--spacing-8)" index={6} />
-            <Skeleton width="100%" height="calc(var(--spacing-10) * 2)" index={7} />
-            <Skeleton width="100%" height="calc(var(--spacing-10) * 2)" index={8} />
-            <Skeleton width="100%" height="calc(var(--spacing-10) * 2)" index={9} />
-          </VStack>
+          <section className="choice-panel">
+            <VStack gap={6}>
+              <header className="choice-header">
+                <VStack gap={2} width="100%">
+                  <Skeleton width="62%" height="var(--spacing-7)" index={16} />
+                  <Skeleton width="74%" height="var(--spacing-4)" index={17} />
+                </VStack>
+                <Skeleton width="calc(var(--spacing-8) * 4)" height="var(--spacing-4)" index={18} />
+              </header>
+              <VStack gap={4}>
+                {[0, 1, 2].map((index) => (
+                  <Card key={index} padding={5} className="nominee-card">
+                    <HStack gap={4} align="center">
+                      <Skeleton width="var(--spacing-12)" height="var(--spacing-12)" radius="rounded" index={index + 19} />
+                      <VStack gap={2} width="100%">
+                        <Skeleton width={index === 1 ? '48%' : '58%'} height="var(--spacing-5)" index={index + 22} />
+                        <Skeleton width="34%" height="var(--spacing-4)" index={index + 25} />
+                      </VStack>
+                    </HStack>
+                  </Card>
+                ))}
+              </VStack>
+            </VStack>
+          </section>
         </section>
         <footer className="ballot-actions" aria-hidden="true">
-          <Skeleton width="calc(var(--spacing-8) * 3)" height="var(--spacing-10)" index={10} />
-          <Skeleton width="calc(var(--spacing-8) * 4)" height="var(--spacing-10)" index={11} />
+          <Skeleton width="calc(var(--spacing-8) * 3)" height="var(--spacing-10)" index={28} />
+          <HStack gap={3}>
+            <Skeleton width="calc(var(--spacing-8) * 3)" height="var(--spacing-10)" index={29} />
+            <Skeleton width="calc(var(--spacing-8) * 4)" height="var(--spacing-10)" index={30} />
+          </HStack>
         </footer>
       </main>
     </AppShell>

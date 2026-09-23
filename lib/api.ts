@@ -38,8 +38,9 @@ export async function fetchAdminNomination(id: string) {
   return (await jsonRequest<{nomination: Nomination}>(`/api/admin/nominations/${encodeURIComponent(id)}`)).nomination;
 }
 
-export async function fetchNominationNominees(id: string, page: number) {
-  return jsonRequest<{nominees: NominationEntry[]; total: number}>(`/api/admin/nominations/${encodeURIComponent(id)}/nominees?page=${page}`);
+export async function fetchNominationNominees(id: string, page: number, all = false) {
+  const params = all ? 'all=true' : `page=${page}`;
+  return jsonRequest<{nominees: NominationEntry[]; total: number}>(`/api/admin/nominations/${encodeURIComponent(id)}/nominees?${params}`);
 }
 
 export async function fetchNominationYouthRecords(id: string, page: number) {

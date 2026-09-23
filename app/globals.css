@@ -462,6 +462,59 @@ body {
   margin-bottom: var(--spacing-5);
 }
 
+.nominee-view-toolbar {
+  display: grid;
+  grid-template-columns: max-content minmax(0, calc(var(--spacing-12) * 9));
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-5);
+}
+
+.nominee-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(calc(var(--spacing-12) * 5), calc(var(--spacing-12) * 6));
+  align-items: start;
+  gap: var(--spacing-4);
+  overflow-x: auto;
+  padding-bottom: var(--spacing-2);
+}
+
+.nominee-board-column {
+  display: grid;
+  align-content: start;
+  gap: var(--spacing-3);
+  min-height: calc(var(--spacing-12) * 9);
+  padding: var(--spacing-3);
+  border-radius: var(--radius-container);
+  background: var(--color-background-muted);
+}
+
+.nominee-board-column-header {
+  position: sticky;
+  top: var(--spacing-2);
+  z-index: 1;
+  padding-block: var(--spacing-1);
+  background: var(--color-background-muted);
+}
+
+.nominee-board-column-header .astryx-heading {
+  font-size: var(--font-size-sm);
+}
+
+.nominee-board-card {
+  position: relative;
+  min-width: 0;
+}
+
+.nominee-board-card-remove {
+  position: absolute;
+  top: var(--spacing-2);
+  inset-inline-end: var(--spacing-2);
+  z-index: 1;
+}
+
 .event-grid,
 .live-results-grid,
 .results-grid {
@@ -718,6 +771,11 @@ progress::-moz-progress-bar {
 
   .admin-page {
     padding: var(--spacing-5) var(--spacing-4);
+  }
+
+  .nominee-view-toolbar {
+    grid-template-columns: 1fr;
+    justify-items: start;
   }
 
   .instrument-strip,

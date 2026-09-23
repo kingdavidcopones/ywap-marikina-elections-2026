@@ -118,6 +118,10 @@ function currentManilaDateTime() {
   return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16) as ISODateTimeString;
 }
 
+function manilaInput(value: string): ISODateTimeString | undefined {
+  return value ? new Date(Date.parse(value) + 8 * 60 * 60 * 1000).toISOString().slice(0, 16) as ISODateTimeString : undefined;
+}
+
 function formatElectionDate(date: string) {
   if (!date) return 'Not scheduled';
   return new Intl.DateTimeFormat('en-PH', {dateStyle: 'medium'}).format(new Date(`${date}T00:00:00`));
@@ -286,8 +290,8 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
 
   function openScheduleDialog() {
     if (!election) return;
-    setScheduleOpensAt(election.opensAt ? election.opensAt as ISODateTimeString : undefined);
-    setScheduleClosesAt(election.closesAt ? election.closesAt as ISODateTimeString : undefined);
+    setScheduleOpensAt(manilaInput(election.opensAt));
+    setScheduleClosesAt(manilaInput(election.closesAt));
     setScheduleError(null);
     setScheduleStep('edit');
     setIsScheduleDialogOpen(true);
@@ -348,9 +352,11 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
 
   function confirmSchedule() {
     if (!election || !scheduleOpensAt || !scheduleClosesAt) return;
-    persist({...election, status: 'Scheduled', electionDate: scheduleOpensAt.slice(0, 10), opensAt: scheduleOpensAt, closesAt: scheduleClosesAt});
+    const opensAt = parseElectionDateTime(scheduleOpensAt).toISOString();
+    const closesAt = parseElectionDateTime(scheduleClosesAt).toISOString();
+    persist({...election, status: 'Scheduled', electionDate: scheduleOpensAt.slice(0, 10), opensAt, closesAt});
     closeScheduleDialog();
-    toast({body: `${election.title} is scheduled to open ${formatElectionDateTime(scheduleOpensAt)}.`, uniqueID: 'election-scheduled'});
+    toast({body: `${election.title} is scheduled to open ${formatElectionDateTime(opensAt)}.`, uniqueID: 'election-scheduled'});
   }
 
   function confirmStatusChange() {
@@ -367,13 +373,10 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       restore: `${election.title} was restored as a draft.`,
     };
     const now = new Date();
-    const closesAt = election.closesAt && new Date(election.closesAt) > now
-      ? election.closesAt
-      : new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
     persist({
       ...election,
       status: nextStatus,
-      ...(pendingStatusAction === 'publish' ? {opensAt: now.toISOString(), closesAt, electionDate: now.toISOString().slice(0, 10)} : {}),
+      ...(pendingStatusAction === 'publish' ? {opensAt: now.toISOString(), closesAt: '', electionDate: now.toISOString().slice(0, 10)} : {}),
     });
     toast({body: messages[pendingStatusAction], uniqueID: `election-${pendingStatusAction}`});
     setPendingStatusAction(null);
@@ -720,11 +723,11 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
             <Badge variant={statusVariant(election.status)} label={statusLabel} />
           </HStack>
           <Text color="secondary">{election.description}</Text>
-          {election.opensAt && election.closesAt ? (
+          {election.opensAt ? (
             <HStack className="event-schedule" gap={4} align="center" wrap="wrap">
               <Text type="supporting" color="secondary">Election day: {formatElectionDate(election.electionDate)}</Text>
               <Text type="supporting" color="secondary">Opens: {formatElectionDateTime(election.opensAt)}</Text>
-              <Text type="supporting" color="secondary">Closes: {formatElectionDateTime(election.closesAt)}</Text>
+              <Text type="supporting" color="secondary">Closes: {election.closesAt ? formatElectionDateTime(election.closesAt) : 'Open indefinitely'}</Text>
             </HStack>
           ) : <Text type="supporting" color="secondary">Voting schedule not set</Text>}
         </VStack>

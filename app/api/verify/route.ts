@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const canOpenAutomatically = election?.status === 'Scheduled' && Boolean(election.opensAt) && now >= new Date(election.opensAt);
     const isPublished = election?.status === 'Published';
     const isVotingStatus = election?.status === 'Open' || isPublished || canOpenAutomatically;
-    if (!election || !isVotingStatus || !election.opensAt || !election.closesAt || now < new Date(election.opensAt) || now > new Date(election.closesAt)) {
+    if (!election || !isVotingStatus || !election.opensAt || now < new Date(election.opensAt) || (election.closesAt && now > new Date(election.closesAt))) {
       return NextResponse.json({ok: false, message: 'There is no election open for voting right now.'}, {status: 404});
     }
 

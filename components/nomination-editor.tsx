@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {ArrowLeftIcon} from '@phosphor-icons/react/ArrowLeft';
 import {ArrowUpRightIcon} from '@phosphor-icons/react/ArrowUpRight';
@@ -11,6 +11,10 @@ import {ArchiveIcon} from '@phosphor-icons/react/Archive';
 import {PencilSimpleIcon} from '@phosphor-icons/react/PencilSimple';
 import {TrashIcon} from '@phosphor-icons/react/Trash';
 import {UploadSimpleIcon} from '@phosphor-icons/react/UploadSimple';
+import {ClockIcon} from '@phosphor-icons/react/Clock';
+import {KanbanIcon} from '@phosphor-icons/react/Kanban';
+import {TableIcon} from '@phosphor-icons/react/Table';
+import {Badge} from '@astryxdesign/core/Badge';
 import {AlertDialog} from '@astryxdesign/core/AlertDialog';
 import {Banner} from '@astryxdesign/core/Banner';
 import {Button} from '@astryxdesign/core/Button';
@@ -24,15 +28,20 @@ import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {FormLayout} from '@astryxdesign/core/FormLayout';
 import {Heading} from '@astryxdesign/core/Heading';
 import {HStack, Layout, LayoutContent, LayoutFooter, VStack} from '@astryxdesign/core/Layout';
+import {IconButton} from '@astryxdesign/core/IconButton';
 import {Pagination} from '@astryxdesign/core/Pagination';
 import {Skeleton} from '@astryxdesign/core/Skeleton';
+import {SegmentedControl, SegmentedControlItem} from '@astryxdesign/core/SegmentedControl';
 import {StatusDot} from '@astryxdesign/core/StatusDot';
 import {Tab, TabList} from '@astryxdesign/core/TabList';
 import {Table, pixel, proportional} from '@astryxdesign/core/Table';
 import {Text} from '@astryxdesign/core/Text';
 import {TextArea} from '@astryxdesign/core/TextArea';
 import {TextInput} from '@astryxdesign/core/TextInput';
+import {Typeahead, TypeaheadItem, type SearchSource, type SearchableItem} from '@astryxdesign/core/Typeahead';
 import {useToast} from '@astryxdesign/core/Toast';
+import {useContainerReveal} from '@astryxdesign/core/hooks';
+import {mergeProps} from '@astryxdesign/core/utils';
 import {fetchAdminNomination, fetchNominationNominees, fetchNominationYouthRecords, removeNomination, updateAdminNomination} from '@/lib/api';
 import {ElectionEditorSkeleton} from '@/components/loading-states';
 import {normalizeCsvBirthDate, normalizeGender, parseVoters} from '@/lib/csv';
@@ -40,6 +49,7 @@ import {NOMINATION_AGE_GROUPS, isNominationAgeGroup, type Nomination, type Nomin
 
 interface PositionRow extends Record<string, unknown> { id: string; name: string; audience: string; shortDescription: string; required: string; }
 interface NomineeRow extends Record<string, unknown> { id: string; nomineeName: string; nominee: string; positionName: string; nominatedBy: string; submittedAt: string; }
+interface NomineeSearchItem extends SearchableItem<{filter: string}> { auxiliaryData: {filter: string}; }
 interface YouthRow extends Record<string, unknown> { id: string; memberId: string; name: string; ageGroup: string; importedAt: string; }
 type UploadRecord = Omit<YouthRecord, 'id' | 'name' | 'importedAt'>;
 type RemoveTarget = {type: 'delete-position' | 'delete-nominee'; id: string; name: string};
@@ -80,6 +90,7 @@ function parseYouthCsv(csv: string): UploadRecord[] {
 export function NominationEditor({id}: {id: string}) {
   const router = useRouter();
   const toast = useToast();
+  const {getContainerProps, getContentRevealProps} = useContainerReveal();
   const addYouthInputRef = useRef<HTMLInputElement>(null);
   const replaceYouthInputRef = useRef<HTMLInputElement>(null);
   const [nomination, setNomination] = useState<Nomination | null>(null);
@@ -87,6 +98,9 @@ export function NominationEditor({id}: {id: string}) {
   const [error, setError] = useState('');
   const [tab, setTab] = useState('positions');
   const [nomineesPage, setNomineesPage] = useState(1);
+  const [nomineeView, setNomineeView] = useState<'table' | 'mapped'>('table');
+  const [nomineeFilter, setNomineeFilter] = useState('');
+  const [selectedNomineeFilter, setSelectedNomineeFilter] = useState<NomineeSearchItem | null>(null);
   const [youthPage, setYouthPage] = useState(1);
   const [busy, setBusy] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -112,7 +126,6 @@ export function NominationEditor({id}: {id: string}) {
   const [isRemovingTarget, setIsRemovingTarget] = useState(false);
   const [nomineeEntries, setNomineeEntries] = useState<NominationEntry[]>([]);
   const [youthRecords, setYouthRecords] = useState<YouthRecord[]>([]);
-  const [nomineeTotal, setNomineeTotal] = useState(0);
   const [youthTotal, setYouthTotal] = useState(0);
   const [collectionLoading, setCollectionLoading] = useState(false);
   const [collectionError, setCollectionError] = useState('');
@@ -130,16 +143,16 @@ export function NominationEditor({id}: {id: string}) {
     let active = true;
     setCollectionLoading(true);
     setCollectionError('');
-    const request = tab === 'nominees' ? fetchNominationNominees(id, nomineesPage) : fetchNominationYouthRecords(id, youthPage);
+    const request = tab === 'nominees' ? fetchNominationNominees(id, 1, true) : fetchNominationYouthRecords(id, youthPage);
     void request.then((result) => {
       if (!active) return;
-      if ('nominees' in result) {setNomineeEntries(result.nominees); setNomineeTotal(result.total);}
+      if ('nominees' in result) {setNomineeEntries(result.nominees);}
       else {setYouthRecords(result.records); setYouthTotal(result.total);}
     }).catch((cause) => {
       if (active) setCollectionError(cause instanceof Error ? cause.message : 'Records could not be loaded.');
     }).finally(() => {if (active) setCollectionLoading(false);});
     return () => {active = false;};
-  }, [id, nomination?.id, tab, nomineesPage, youthPage, refreshKey]);
+  }, [id, nomination?.id, tab, youthPage, refreshKey]);
 
   async function mutate(action: Record<string, unknown>, removedName?: string) {
     if (!nomination) return false;
@@ -149,7 +162,10 @@ export function NominationEditor({id}: {id: string}) {
       setNomination(updated);
       setRefreshKey((value) => value + 1);
       if (action.type === 'delete-nominee' && nomineesPage > Math.max(1, Math.ceil(updated.nomineeCount / PAGE_SIZE))) setNomineesPage(Math.max(1, Math.ceil(updated.nomineeCount / PAGE_SIZE)));
-      if (action.type === 'delete-nominee') toast({body: `${removedName ?? 'Nominee'} has been removed`, type: 'error', isAutoHide: true});
+      if (action.type === 'delete-nominee') {
+        setNomineeEntries((entries) => entries.filter((entry) => entry.id !== action.nomineeId));
+        toast({body: `${removedName ?? 'Nominee'} has been removed.`, uniqueID: 'nominee-removed'});
+      }
       else toast({body: action.type === 'status' ? `Nomination ${String(action.status).toLowerCase()}.` : action.type === 'position' ? 'Position saved.' : action.type === 'delete-position' ? 'Position removed.' : action.type === 'details' ? 'Nomination details saved.' : 'Youth Records saved.'});
       return true;
     } catch (cause) {
@@ -230,6 +246,16 @@ export function NominationEditor({id}: {id: string}) {
       toast({body: cause instanceof Error ? cause.message : 'The nomination could not be deleted.', type: 'error'});
     } finally {setBusy(false);}
   }
+  const nomineeSearchSource = useMemo<SearchSource<NomineeSearchItem>>(() => ({
+    bootstrap: () => nomineeEntries.slice(0, 10).map((entry) => ({id: entry.id, label: entry.nomineeName, auxiliaryData: {filter: entry.nomineeName}})),
+    cancel: () => {},
+    search: (query) => {
+      const normalizedQuery = query.trim().toLocaleLowerCase('en');
+      return nomineeEntries.filter((entry) => !normalizedQuery || entry.nomineeName.toLocaleLowerCase('en').includes(normalizedQuery)
+        || entry.ageGroup?.toLocaleLowerCase('en').includes(normalizedQuery)).slice(0, 10)
+        .map((entry) => ({id: entry.id, label: entry.nomineeName, auxiliaryData: {filter: entry.nomineeName}}));
+    },
+  }), [nomineeEntries]);
 
   if (loading) return <ElectionEditorSkeleton />;
   if (!nomination) return <main className="admin-page"><Card padding={6}><Heading level={1}>Nomination unavailable</Heading><Text>{error || 'It may have been removed.'}</Text></Card></main>;
@@ -244,6 +270,31 @@ export function NominationEditor({id}: {id: string}) {
   const currentNomineesPage = nomineesPage;
   const currentYouthPage = youthPage;
   const canEdit = nomination.status === 'Draft';
+  const normalizedNomineeFilter = nomineeFilter.trim().toLocaleLowerCase('en');
+  const filteredNomineeEntries = normalizedNomineeFilter ? nomineeEntries.filter((entry) => (
+    entry.nomineeName.toLocaleLowerCase('en').includes(normalizedNomineeFilter)
+    || entry.ageGroup?.toLocaleLowerCase('en').includes(normalizedNomineeFilter)
+  )) : nomineeEntries;
+  const filteredNomineeIds = new Set(filteredNomineeEntries.map((entry) => entry.id));
+  const filteredNomineeRows = nomineeRows.filter((row) => filteredNomineeIds.has(row.id));
+  const paginatedNomineeRows = filteredNomineeRows.slice((currentNomineesPage - 1) * PAGE_SIZE, currentNomineesPage * PAGE_SIZE);
+  function changeNomineeView(value: string) {
+    const nextView = value === 'mapped' ? 'mapped' : 'table';
+    setNomineeView(nextView);
+    setNomineeFilter('');
+    setSelectedNomineeFilter(null);
+    setNomineesPage(1);
+  }
+  function closeRemoveDialog() {
+    const clearsMappedCardFocus = removeTarget?.type === 'delete-nominee' && nomineeView === 'mapped';
+    setRemoveTarget(null);
+    if (clearsMappedCardFocus) {
+      window.setTimeout(() => {
+        const focusedElement = document.activeElement;
+        if (focusedElement instanceof HTMLElement && focusedElement.closest('.nominee-board-card')) focusedElement.blur();
+      }, 0);
+    }
+  }
 
   return <main className="admin-page event-editor-page">
     <Button label="Back to nominations" href="/nominations" variant="ghost" icon={<ArrowLeftIcon />}>Back to nominations</Button>
@@ -301,15 +352,37 @@ export function NominationEditor({id}: {id: string}) {
     {tab === 'nominees' ? <section id="nomination-nominees-panel" role="tabpanel" className="dashboard-section" aria-label="Nominee list">
       <header className="section-heading-row"><VStack gap={1}><Heading level={2}>Nominees</Heading><Text color="secondary">Each submitted nomination appears as a separate row.</Text></VStack>
         <Button label="Download Nominees" href={`/api/admin/nominations/${nomination.id}/nominees/export`} variant="secondary" icon={<DownloadSimpleIcon />} /></header>
+      <section className="nominee-view-toolbar" aria-label="Nominee view and search">
+        <SegmentedControl value={nomineeView} onChange={changeNomineeView} label="Nominee view" size="sm">
+          <SegmentedControlItem value="table" label="Table" icon={<TableIcon size={14} />} />
+          <SegmentedControlItem value="mapped" label="Mapped" icon={<KanbanIcon size={14} />} />
+        </SegmentedControl>
+        <Typeahead<NomineeSearchItem> key={nomineeView} label="Search nominees" isLabelHidden placeholder="Search name or age group" searchSource={nomineeSearchSource}
+          value={selectedNomineeFilter} onChange={(item) => {setSelectedNomineeFilter(item); setNomineeFilter(item?.auxiliaryData.filter ?? ''); setNomineesPage(1);}}
+          onChangeQuery={(query) => {setNomineeFilter(query); setSelectedNomineeFilter(null); setNomineesPage(1);}} renderItem={(item) => <TypeaheadItem item={item} description={nomineeEntries.find((entry) => entry.id === item.id)?.ageGroup ?? 'Not in records'} />}
+          hasEntriesOnFocus minQueryLength={0} debounceMs={0} width="100%" startIcon="search" />
+      </section>
       {collectionError ? <Banner status="error" title="Nominees could not be loaded" description={collectionError} container="section" /> : null}
-      {collectionLoading ? <Skeleton width="100%" height="var(--spacing-12)" index={0} /> : nomineeRows.length ? <section className="table-surface" aria-label="Nominees"><Table<NomineeRow> data={nomineeRows} idKey="id" rowIndexStart={(currentNomineesPage - 1) * PAGE_SIZE + 1} rowCount={nomineeTotal} columns={[
+      {collectionLoading ? <Skeleton width="100%" height="var(--spacing-12)" index={0} /> : nomineeRows.length || nomineeView === 'mapped' ? nomineeView === 'table' ? <section className="table-surface" aria-label="Nominees"><Table<NomineeRow> data={paginatedNomineeRows} idKey="id" rowIndexStart={(currentNomineesPage - 1) * PAGE_SIZE + 1} rowCount={filteredNomineeRows.length} columns={[
         {key: 'nomineeName', header: 'Name', width: proportional(2)},
         {key: 'nominee', header: 'Nominee', width: pixel(100)},
         {key: 'positionName', header: 'Position nominated', width: proportional(2)},
         {key: 'nominatedBy', header: 'Nominated by', width: proportional(2)},
         {key: 'submittedAt', header: 'Submitted at', width: proportional(2), renderCell: (row) => formatDate(row.submittedAt)},
         {key: 'id', header: 'Action', width: pixel(120), renderCell: (row) => <Button label={`Remove ${row.nomineeName}`} size="sm" variant="ghost" icon={<TrashIcon />} onClick={() => setRemoveTarget({type: 'delete-nominee', id: row.id, name: row.nomineeName})}>Remove</Button>},
-      ]} />{nomineeTotal > PAGE_SIZE ? <footer className="table-pagination"><Pagination page={currentNomineesPage} onChange={setNomineesPage} totalItems={nomineeTotal} pageSize={PAGE_SIZE} variant="pages" size="sm" label="Nominee pages" /></footer> : null}</section> : !collectionError ? <Card padding={6}><EmptyState title="No nominees yet" description="Submitted nominations will appear here." /></Card> : null}
+      ]} />{filteredNomineeRows.length > PAGE_SIZE ? <footer className="table-pagination"><Pagination page={currentNomineesPage} onChange={setNomineesPage} totalItems={filteredNomineeRows.length} pageSize={PAGE_SIZE} variant="pages" size="sm" label="Nominee pages" /></footer> : null}</section> : <section className="nominee-board" aria-label="Nominees mapped by position">{nomination.positions.map((position) => {
+        const entries = filteredNomineeEntries.filter((entry) => entry.positionId === position.id);
+        return <article className="nominee-board-column" key={position.id} aria-label={`${position.name}: ${entries.length} nominees`}><HStack className="nominee-board-column-header" gap={2} align="center" justify="between"><Heading level={3} weight="medium" maxLines={1}>{position.name}</Heading><Badge variant="neutral" label={entries.length} /></HStack>
+          <VStack gap={2}>{entries.length ? entries.map((entry) => <Card key={entry.id} padding={3} {...mergeProps(getContainerProps({hoverDelay: 100}), {className: 'nominee-board-card'})}>
+            <IconButton {...mergeProps(getContentRevealProps({isLayoutPreserved: true}), {className: 'nominee-board-card-remove'})} label={`Remove ${entry.nomineeName}`} tooltip="Remove nominee" size="sm" variant="destructive" icon={<TrashIcon />} onClick={() => setRemoveTarget({type: 'delete-nominee', id: entry.id, name: entry.nomineeName})} />
+            <VStack gap={2}>
+              <HStack gap={2} wrap="wrap">{entry.nomineeEligible ? <HStack gap={1} align="center"><StatusDot label="Eligible" variant="success" /><Text type="supporting">Eligible</Text></HStack> : null}{!entry.youthRecordId ? <HStack gap={1} align="center"><StatusDot label="Pending review" variant="warning" /><Text type="supporting">Pending review</Text></HStack> : null}</HStack>
+              <VStack gap={0.5}><Text weight="semibold">{entry.nomineeName}</Text><Text type="supporting" color="secondary">{entry.youthRecordId ? entry.ageGroup ?? 'In records' : 'Not in records'}</Text></VStack>
+              <HStack gap={1} align="center"><ClockIcon aria-hidden="true" /><Text type="supporting" color="secondary">{formatDate(entry.submittedAt)}</Text></HStack>
+            </VStack>
+          </Card>) : <Card padding={4} variant="muted"><EmptyState title="No nominees yet" description={normalizedNomineeFilter ? 'No nominees match this search.' : 'People awaiting nomination appear here.'} isCompact /></Card>}</VStack>
+        </article>;
+      })}</section> : !collectionError ? <Card padding={6}><EmptyState title={normalizedNomineeFilter ? 'No matching nominees' : 'No nominees yet'} description={normalizedNomineeFilter ? 'Try a different name or age group.' : 'Submitted nominations will appear here.'} /></Card> : null}
     </section> : null}
     {tab === 'youth' ? <section id="nomination-youth-panel" role="tabpanel" className="dashboard-section" aria-label="Youth Records">
       <header className="section-heading-row">
@@ -391,10 +464,10 @@ export function NominationEditor({id}: {id: string}) {
         </FormLayout></form> : <VStack gap={3}><Text>This nomination will open and close automatically at these times:</Text><Text>Opens: {formatDate(toIso(opensAt))}</Text><Text>Closes: {formatDate(toIso(closesAt))}</Text></VStack>}</LayoutContent>}
         footer={<LayoutFooter><HStack gap={3} justify="end">{scheduleStep === 'edit' ? <><Button label="Cancel" variant="ghost" onClick={() => setScheduleOpen(false)} /><Button label="Review nomination schedule" type="submit" form="nomination-schedule-form" variant="primary">Continue</Button></> : <><Button label="Change schedule" variant="secondary" onClick={() => setScheduleStep('edit')}>Back</Button><Button label="Confirm nomination schedule" variant="primary" isLoading={busy} onClick={() => void setStatus('Scheduled', {opensAt: toIso(opensAt), closesAt: toIso(closesAt)})}>Schedule nomination</Button></>}</HStack></LayoutFooter>} />
     </Dialog>
-    <AlertDialog isOpen={Boolean(removeTarget)} onOpenChange={(open) => {if (!open) setRemoveTarget(null);}} title={`Remove ${removeTarget?.name ?? 'item'}?`}
+    <AlertDialog isOpen={Boolean(removeTarget)} onOpenChange={(open) => {if (!open) closeRemoveDialog();}} title={`Remove ${removeTarget?.name ?? 'item'}?`}
       description={removeTarget?.type === 'delete-position' ? 'This also removes all submitted nominees for this position.' : 'This removes this nominee row from the nomination.'} actionLabel="Remove" actionVariant="destructive"
       isActionLoading={isRemovingTarget}
-      onAction={() => {if (!removeTarget) return; setIsRemovingTarget(true); void mutate({type: removeTarget.type, [removeTarget.type === 'delete-position' ? 'positionId' : 'nomineeId']: removeTarget.id}, removeTarget.name).then((saved) => {if (saved) setRemoveTarget(null);}).finally(() => setIsRemovingTarget(false));}} />
+      onAction={() => {if (!removeTarget) return; setIsRemovingTarget(true); void mutate({type: removeTarget.type, [removeTarget.type === 'delete-position' ? 'positionId' : 'nomineeId']: removeTarget.id}, removeTarget.name).then((saved) => {if (saved) closeRemoveDialog();}).finally(() => setIsRemovingTarget(false));}} />
     <AlertDialog isOpen={replaceYouthOpen} onOpenChange={setReplaceYouthOpen} title="Replace all Youth Records?"
       description="Choose a CSV to replace the current list. Names already submitted as nominees will remain in the Nominees table."
       actionLabel="Choose replacement CSV" onAction={() => {setReplaceYouthOpen(false); replaceYouthInputRef.current?.click();}} />

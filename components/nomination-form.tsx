@@ -182,7 +182,7 @@ export function NominationForm({slug}: {slug: string}) {
     finally { setSubmitting(false); }
   }
 
-  if (submittedAt && nomination) return <NominationConfirmation nominationName={nomination.name} submittedAt={submittedAt} />;
+  if (submittedAt && nomination) return <NominationConfirmation nominationName={nomination.name} submittedAt={submittedAt} slug={slug} />;
   if (availability?.status === 'Scheduled' && isBeforeStart) {
     return <VoterLinkState kind="scheduled" subject="nomination" electionTitle={availability.name} startsAt={availability.opensAt} now={now} />;
   }
