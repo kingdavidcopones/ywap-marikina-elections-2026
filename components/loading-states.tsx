@@ -6,13 +6,11 @@ import {HStack, VStack} from '@astryxdesign/core/Layout';
 import {Section} from '@astryxdesign/core/Section';
 import {Skeleton} from '@astryxdesign/core/Skeleton';
 import {Spinner} from '@astryxdesign/core/Spinner';
-import {MeshGradient} from './mesh-gradient';
 
 export function VoterEntryLoading() {
   return (
     <AppShell height="fill" variant="wash" contentPadding={0}>
       <Section variant="transparent" padding={6} className="access-page animated-mesh-gradient-background" width="100%" aria-busy="true" aria-label="Loading election">
-        <MeshGradient />
         <VStack gap={6} className="access-stack" hAlign="center">
           <header className="access-brand">
             <Image src="/brand/ywap-marikina-elections-logo-word.svg" alt="YWAP Marikina Elections 2026" width={172} height={50} priority />

@@ -14,7 +14,6 @@ import {Text} from '@astryxdesign/core/Text';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {markVerificationTransition, saveVoterSession, type VoterSession} from '@/lib/voter-session';
 import {isNetworkError, reportNetworkError} from '@/lib/network-error';
-import {MeshGradient} from './mesh-gradient';
 import {VerifiedBallotSkeleton} from './loading-states';
 
 export function VoterAccess({ballotSlug, onVerified}: {ballotSlug?: string; onVerified?: () => void}) {
@@ -67,7 +66,6 @@ export function VoterAccess({ballotSlug, onVerified}: {ballotSlug?: string; onVe
         className="access-page animated-mesh-gradient-background"
         width="100%"
       >
-        <MeshGradient />
         <VStack gap={6} className="access-stack">
           <header className="access-brand">
             <Image
