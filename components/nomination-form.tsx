@@ -18,6 +18,7 @@ import {Skeleton} from '@astryxdesign/core/Skeleton';
 import {SelectableCard} from '@astryxdesign/core/SelectableCard';
 import {Typeahead, TypeaheadItem, type SearchSource, type SearchableItem} from '@astryxdesign/core/Typeahead';
 import {fetchNominationAvailability, fetchPublicNomination, type NominationAvailability} from '@/lib/api';
+import {MeshGradient} from '@/components/mesh-gradient';
 import {NominationConfirmation} from '@/components/nomination-confirmation';
 import {VoterLinkState} from '@/components/voter-link-state';
 import {NOMINATION_AGE_GROUPS, positionVisibleToAgeGroup, type Nomination, type NominationAgeGroup, type NominationPosition} from '@/lib/nomination-data';
@@ -190,6 +191,7 @@ export function NominationForm({slug}: {slug: string}) {
 
   return <AppShell height="fill" variant="wash" contentPadding={0}>
     <Section variant="transparent" padding={6} className="access-page nomination-access-page animated-mesh-gradient-background" width="100%">
+      <MeshGradient />
       <VStack gap={6} hAlign="center" width="100%">
         <header className="access-brand"><Image src="/brand/ywap-marikina-elections-logo-word.svg" alt="YWAP Marikina Elections 2026" width={172} height={50} priority /></header>
         <Card maxWidth={720} width="100%" padding={8} elevation="low" className="verification-card nomination-wizard-card">

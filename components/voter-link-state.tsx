@@ -10,6 +10,7 @@ import {Icon} from '@astryxdesign/core/Icon';
 import {Section} from '@astryxdesign/core/Section';
 import {Text} from '@astryxdesign/core/Text';
 import {VStack} from '@astryxdesign/core/VStack';
+import {MeshGradient} from './mesh-gradient';
 
 function formatStart(dateTime: string) {
   return new Intl.DateTimeFormat('en-PH', {
@@ -48,6 +49,7 @@ export function VoterLinkState({
   return (
     <AppShell height="fill" variant="wash" contentPadding={0}>
       <Section variant="transparent" padding={6} className="access-page animated-mesh-gradient-background" width="100%">
+        <MeshGradient />
         <VStack gap={6} className="access-stack">
           <header className="access-brand">
             <Image
