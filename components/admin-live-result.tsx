@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useState} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {ArrowLeftIcon} from '@phosphor-icons/react/ArrowLeft';
 import {ArrowClockwiseIcon} from '@phosphor-icons/react/ArrowClockwise';
 import {ChartBarIcon} from '@phosphor-icons/react/ChartBar';
@@ -18,7 +18,7 @@ import {ProgressBar} from '@astryxdesign/core/ProgressBar';
 import {Section} from '@astryxdesign/core/Section';
 import {Skeleton} from '@astryxdesign/core/Skeleton';
 import {Tab, TabList} from '@astryxdesign/core/TabList';
-import {Table, pixel, proportional} from '@astryxdesign/core/Table';
+import {Table, proportional} from '@astryxdesign/core/Table';
 import {Text} from '@astryxdesign/core/Text';
 import type {ElectionEvent, ElectionResult, IndividualVoteRecord} from '@/lib/election-data';
 import {fetchIndividualResults, fetchResults} from '@/lib/api';
@@ -27,7 +27,35 @@ import {LiveResultSkeleton} from '@/components/loading-states';
 const submittedAtFormatter = new Intl.DateTimeFormat('en-PH', {
   dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila',
 });
-const INDIVIDUAL_PAGE_SIZE = 10;
+
+type IndividualBallot = {
+  id: string;
+  memberId: string;
+  voterName: string;
+  ageGroup: string;
+  submittedAt: string;
+  votes: IndividualVoteRecord[];
+};
+
+function groupIndividualBallots(records: IndividualVoteRecord[]) {
+  const ballots = new Map<string, IndividualBallot>();
+  records.forEach((record) => {
+    const ballot = ballots.get(record.ballotId);
+    if (ballot) {
+      ballot.votes.push(record);
+      return;
+    }
+    ballots.set(record.ballotId, {
+      id: record.ballotId,
+      memberId: record.memberId,
+      voterName: record.voterName,
+      ageGroup: record.ageGroup,
+      submittedAt: record.submittedAt,
+      votes: [record],
+    });
+  });
+  return [...ballots.values()].sort((left, right) => left.submittedAt.localeCompare(right.submittedAt));
+}
 
 function statusVariant(status: ElectionEvent['status']) {
   if (status === 'Open' || status === 'Published') return 'success' as const;
@@ -66,6 +94,8 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
   const [individualLoading, setIndividualLoading] = useState(false);
   const [individualError, setIndividualError] = useState<string | null>(null);
   const [individualPage, setIndividualPage] = useState(1);
+  const individualBallots = useMemo(() => groupIndividualBallots(individualRecords), [individualRecords]);
+  const selectedBallot = individualBallots[individualPage - 1];
 
   useEffect(() => {
     setIsReady(false);
@@ -98,6 +128,10 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
     });
     return () => { active = false; };
   }, [view, event?.id, event?.anonymousVoting]);
+
+  useEffect(() => {
+    setIndividualPage((page) => Math.min(page, Math.max(individualBallots.length, 1)));
+  }, [individualBallots.length]);
 
   async function refreshResults() {
     setIsRefreshing(true);
@@ -246,9 +280,8 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
       </section> : (
         <section id="live-individual-panel" role="tabpanel" aria-label="Individual vote records">
           <header className="section-heading-row">
-            <VStack gap={1}><Heading level={2}>Individual vote records</Heading><Text color="secondary">Each row is one voter's recorded choice for a position.</Text></VStack>
+            <VStack gap={1}><Heading level={2}>Individual vote records</Heading><Text color="secondary">Each page shows one voter’s complete ballot, ordered from the first submitted ballot to the latest.</Text></VStack>
             {individualRecords.length ? <HStack gap={2} align="center" wrap="wrap">
-              {individualRecords.length > INDIVIDUAL_PAGE_SIZE ? <Pagination page={individualPage} onChange={setIndividualPage} totalItems={individualRecords.length} pageSize={INDIVIDUAL_PAGE_SIZE} variant="compact" size="sm" label="Individual vote record pages" /> : null}
               <Button label="Download responses" href={`/api/admin/elections/${event.id}/individual-results/export`} variant="secondary" icon={<DownloadSimpleIcon />} />
             </HStack> : null}
           </header>
@@ -256,26 +289,44 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
             <Text color="secondary">Loading individual vote records…</Text>
           ) : individualError ? (
             <EmptyState title="Individual records could not be loaded" description={individualError} />
-          ) : individualRecords.length ? (
-            <section className="table-surface" aria-label="Individual vote records" tabIndex={0}>
+          ) : selectedBallot ? (
+            <section className="table-surface" aria-label={`Votes recorded for ${selectedBallot.voterName}`} tabIndex={0}>
+              <Section padding={4} dividers={['bottom']}>
+                <HStack justify="between" gap={4} align="start" wrap="wrap">
+                  <VStack gap={1}>
+                    <Heading level={3}>{selectedBallot.voterName}</Heading>
+                    <Text color="secondary">{selectedBallot.ageGroup} · Member ID {selectedBallot.memberId}</Text>
+                  </VStack>
+                  <VStack gap={1} hAlign="end">
+                    <Text weight="semibold" hasTabularNumbers>Voter {individualPage} of {individualBallots.length}</Text>
+                    <Text type="supporting" color="secondary">Submitted {submittedAtFormatter.format(new Date(selectedBallot.submittedAt))}</Text>
+                  </VStack>
+                </HStack>
+              </Section>
               <Table<IndividualVoteRecord>
-                data={individualRecords.slice((individualPage - 1) * INDIVIDUAL_PAGE_SIZE, individualPage * INDIVIDUAL_PAGE_SIZE).map((record) => ({
-                  ...record,
-                  submittedAt: submittedAtFormatter.format(new Date(record.submittedAt)),
-                }))}
+                data={selectedBallot.votes}
                 idKey="id"
                 density="compact"
                 dividers="rows"
                 columns={[
-                  ...(event.anonymousVoting ? [] : [
-                    {key: 'voterName', header: 'Voter', width: proportional(1), renderCell: (row: IndividualVoteRecord) => <VStack gap={0}><Text weight="semibold">{row.voterName}</Text><Text type="supporting" color="secondary">{row.ageGroup}</Text></VStack>},
-                    {key: 'memberId', header: 'Member ID', width: pixel(150)},
-                  ]),
                   {key: 'position', header: 'Position', width: proportional(1)},
                   {key: 'choice', header: 'Vote', width: proportional(1)},
-                  {key: 'submittedAt', header: 'Submitted at', width: pixel(180)},
                 ]}
               />
+              {individualBallots.length > 1 ? (
+                <footer className="table-pagination">
+                  <Pagination
+                    page={individualPage}
+                    onChange={setIndividualPage}
+                    totalItems={individualBallots.length}
+                    pageSize={1}
+                    variant="input"
+                    pageLabel="Voter"
+                    size="sm"
+                    label="Individual voter pages"
+                  />
+                </footer>
+              ) : null}
             </section>
           ) : (
             <EmptyState title="No individual votes yet" description="Voter choices will appear here as ballots are submitted." />

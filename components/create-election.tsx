@@ -9,24 +9,23 @@ import {Dialog, DialogHeader} from '@astryxdesign/core/Dialog';
 import {FileInput} from '@astryxdesign/core/FileInput';
 import {FormLayout} from '@astryxdesign/core/FormLayout';
 import {HStack, Layout, LayoutContent, LayoutFooter, VStack} from '@astryxdesign/core/Layout';
+import {StatusDot} from '@astryxdesign/core/StatusDot';
 import {Table, pixel, proportional} from '@astryxdesign/core/Table';
 import {Text} from '@astryxdesign/core/Text';
 import {TextArea} from '@astryxdesign/core/TextArea';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {useToast} from '@astryxdesign/core/Toast';
-import {normalizeGender, parseCsvLine, parseVoters} from '@/lib/csv';
+import {
+  ELIGIBLE_VOTER_CSV_COLUMNS,
+  MEMBER_CSV_REQUIRED_COLUMNS,
+  getMemberCsvHeaders,
+  isCsvEligibilityValue,
+  isCsvEligible,
+  normalizeGender,
+  parseVoters,
+} from '@/lib/csv';
 import {type ElectionEvent, type EligibleVoter} from '@/lib/election-data';
 import {createElection} from '@/lib/api';
-
-const REQUIRED_VOTER_COLUMNS = [
-  'member_id',
-  'last_name',
-  'first_name',
-  'gender',
-  'age',
-  'birth_date',
-  'age_group',
-] as const;
 
 interface VoterPreviewRow extends Record<string, unknown> {
   rowId: string;
@@ -37,6 +36,10 @@ interface VoterPreviewRow extends Record<string, unknown> {
   age: string;
   birthDate: string;
   ageGroup: string;
+  voterEligibility: 'Yes' | 'No';
+  nomineeEligibility: 'Yes' | 'No';
+  voterEligible: boolean;
+  nomineeEligible: boolean;
   importStatus: string;
   isValid: boolean;
   attributes: Record<string, string>;
@@ -45,10 +48,8 @@ interface VoterPreviewRow extends Record<string, unknown> {
 type UploadStatus = {type: 'error' | 'warning' | 'success'; message: string};
 
 function validateVoterRows(csv: string) {
-  const lines = csv.split(/\r?\n/).filter((line) => line.trim() && !/^,+$/.test(line.trim()));
-  const headerLine = lines.find((line) => parseCsvLine(line).some((header) => header.trim().toLocaleLowerCase('en') === 'member_id'));
-  const headers = headerLine ? parseCsvLine(headerLine).map((header) => header.trim().toLocaleLowerCase('en')) : [];
-  const missingColumns = REQUIRED_VOTER_COLUMNS.filter((column) => !headers.includes(column));
+  const headers = getMemberCsvHeaders(csv);
+  const missingColumns = ELIGIBLE_VOTER_CSV_COLUMNS.filter((column) => !headers.includes(column));
   if (missingColumns.length) return {rows: [], missingColumns};
 
   const records = parseVoters(csv);
@@ -56,11 +57,15 @@ function validateVoterRows(csv: string) {
   const rows = records.map<VoterPreviewRow>((record, index) => {
     const memberId = record.member_id.trim();
     const age = record.age.trim();
+    const voterEligible = isCsvEligible(record.voter);
+    const nomineeEligible = isCsvEligible(record.nominee);
     const errors: string[] = [];
-    const missingValues = REQUIRED_VOTER_COLUMNS.filter((column) => !record[column]?.trim());
+    const missingValues = MEMBER_CSV_REQUIRED_COLUMNS.filter((column) => !record[column]?.trim());
     if (missingValues.length) errors.push(`Missing ${missingValues.map((column) => column.replaceAll('_', ' ')).join(', ')}`);
     if (age && (!/^\d+$/.test(age) || Number(age) > 120)) errors.push('Invalid age');
     if (record.birth_date.trim() && Number.isNaN(Date.parse(record.birth_date))) errors.push('Invalid birth date');
+    if (!isCsvEligibilityValue(record.voter)) errors.push('Voter must be YES, NO, or blank');
+    if (!isCsvEligibilityValue(record.nominee)) errors.push('Nominee must be YES, NO, or blank');
     if (memberId && seenMemberIds.has(memberId.toLocaleUpperCase('en'))) errors.push('Duplicate Member ID');
     if (memberId) seenMemberIds.add(memberId.toLocaleUpperCase('en'));
 
@@ -73,7 +78,11 @@ function validateVoterRows(csv: string) {
       age,
       birthDate: record.birth_date.trim(),
       ageGroup: record.age_group.trim(),
-      attributes: record,
+      voterEligibility: voterEligible ? 'Yes' : 'No',
+      nomineeEligibility: nomineeEligible ? 'Yes' : 'No',
+      voterEligible,
+      nomineeEligible,
+      attributes: {...record, voter: voterEligible ? 'YES' : 'NO', nominee: nomineeEligible ? 'YES' : 'NO'},
       importStatus: errors.length ? errors.join('; ') : 'Valid',
       isValid: errors.length === 0,
     };
@@ -147,7 +156,7 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
     setVoterRows(rows);
     setUploadStatus(invalidCount
       ? {type: 'warning', message: `${invalidCount} row${invalidCount === 1 ? '' : 's'} need attention.`}
-      : {type: 'success', message: `${rows.length} voter${rows.length === 1 ? '' : 's'} ready.`});
+      : {type: 'success', message: `${rows.length} member record${rows.length === 1 ? '' : 's'} ready.`});
     setIsVoterPreviewOpen(true);
   }
 
@@ -163,7 +172,7 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
     }
 
     setIsCreating(true);
-    const eligibleVoterIds = voterRows.map((row) => row.memberId);
+    const eligibleVoterIds = voterRows.filter((row) => row.voterEligible).map((row) => row.memberId);
     const newEvent: ElectionEvent = {
       id: crypto.randomUUID(),
       ballotSlug: `${title.toLocaleLowerCase('en').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 36) || 'election'}-${crypto.randomUUID().replaceAll('-', '').slice(0, 8)}`,
@@ -188,6 +197,8 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
       gender: row.gender,
       age: Number(row.age),
       birthDate: new Date(row.birthDate).toISOString().slice(0, 10),
+      eligible: row.voterEligible,
+      nomineeEligible: row.nomineeEligible,
       attributes: row.attributes,
     }));
     try {
@@ -243,7 +254,7 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
                     />
                     <FileInput
                       label="Voter list"
-                      description="Optional CSV with member and age-group details."
+                      description="Optional member CSV. Use YES in Voter or Nominee for each eligibility; NO and blank mean not eligible."
                       value={voterFile}
                       onChange={(file) => void selectVoterFile(file as File | null)}
                       accept=".csv,text/csv"
@@ -311,6 +322,8 @@ export function CreateElectionDialog({isOpen, onOpenChange}: {isOpen: boolean; o
                           {key: 'age', header: 'Age', width: pixel(70)},
                           {key: 'birthDate', header: 'Birth date', width: pixel(150)},
                           {key: 'ageGroup', header: 'Age group', width: pixel(140)},
+                          {key: 'voterEligibility', header: 'Voter', width: pixel(100), renderCell: (row) => <HStack gap={1} align="center"><StatusDot variant={row.voterEligible ? 'success' : 'neutral'} label={`Voter eligible: ${row.voterEligibility}`} /><Text>{row.voterEligibility}</Text></HStack>},
+                          {key: 'nomineeEligibility', header: 'Nominee', width: pixel(110), renderCell: (row) => <HStack gap={1} align="center"><StatusDot variant={row.nomineeEligible ? 'success' : 'neutral'} label={`Nominee eligible: ${row.nomineeEligibility}`} /><Text>{row.nomineeEligibility}</Text></HStack>},
                           {key: 'importStatus', header: 'Validation', width: proportional(2)},
                         ]}
                       />

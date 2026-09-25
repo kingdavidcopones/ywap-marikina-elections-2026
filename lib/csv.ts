@@ -1,5 +1,21 @@
 const GENDER_ALIASES: Record<string, string> = {m: 'Male', male: 'Male', f: 'Female', female: 'Female'};
 
+export const MEMBER_CSV_REQUIRED_COLUMNS = [
+  'member_id',
+  'first_name',
+  'last_name',
+  'gender',
+  'age',
+  'birth_date',
+  'age_group',
+] as const;
+
+export const ELIGIBLE_VOTER_CSV_COLUMNS = [
+  ...MEMBER_CSV_REQUIRED_COLUMNS,
+  'voter',
+  'nominee',
+] as const;
+
 export function normalizeGender(value: string) {
   const trimmed = value.trim();
   return GENDER_ALIASES[trimmed.toLocaleLowerCase('en')] ?? trimmed;
@@ -35,6 +51,23 @@ export function parseCsvLine(line: string) {
   }
   values.push(current.trim());
   return values;
+}
+
+export function getMemberCsvHeaders(csv: string) {
+  const headerLine = csv.split(/\r?\n/).find((line) => (
+    parseCsvLine(line).some((header) => header.trim().toLocaleLowerCase('en') === 'member_id')
+  ));
+  return headerLine
+    ? parseCsvLine(headerLine).map((header) => header.trim().toLocaleLowerCase('en'))
+    : [];
+}
+
+export function isCsvEligibilityValue(value = '') {
+  return ['', 'yes', 'no'].includes(value.trim().toLocaleLowerCase('en'));
+}
+
+export function isCsvEligible(value = '') {
+  return value.trim().toLocaleLowerCase('en') === 'yes';
 }
 
 export function parseVoters(csv: string) {

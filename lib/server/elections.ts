@@ -1,6 +1,6 @@
 import 'server-only';
 import {createServerSupabaseClient} from '@/lib/supabase';
-import {normalizeGender} from '@/lib/csv';
+import {isCsvEligible, normalizeGender} from '@/lib/csv';
 import {normalizeCandidateImageUrl, signCandidateImageUrls} from '@/lib/server/candidate-images';
 import type {ElectionEvent, ElectionResult, ElectionSummary, EligibleVoter, IndividualVoteRecord, Position} from '@/lib/election-data';
 
@@ -151,7 +151,7 @@ export async function getIndividualElectionResults(identifier: string): Promise<
   const submittedBallots = await fetchAllRows((from, to) => supabase.from('anonymous_ballots')
     .select('id, eligible_voter_id, submitted_at')
     .eq('election_id', election.id)
-    .order('submitted_at', {ascending: false}).order('id').range(from, to));
+    .order('submitted_at', {ascending: true}).order('id').range(from, to));
   if (!submittedBallots.length) return [];
 
   const [voters, selections] = await Promise.all([
@@ -163,14 +163,23 @@ export async function getIndividualElectionResults(identifier: string): Promise<
   ]);
   const voterById = new Map(voters.map((voter) => [voter.id, voter]));
   const ballotById = new Map(submittedBallots.map((ballot) => [ballot.id, ballot]));
+  const ballotOrderById = new Map(submittedBallots.map((ballot, index) => [ballot.id, index]));
   const positionById = new Map(election.positions.map((position) => [position.id, position]));
+  const positionOrderById = new Map(election.positions.map((position, index) => [position.id, index]));
 
-  return selections.map((selection) => {
+  return selections.sort((left, right) => {
+    const ballotOrder = (ballotOrderById.get(left.anonymous_ballot_id) ?? Number.MAX_SAFE_INTEGER)
+      - (ballotOrderById.get(right.anonymous_ballot_id) ?? Number.MAX_SAFE_INTEGER);
+    if (ballotOrder) return ballotOrder;
+    return (positionOrderById.get(left.position_id) ?? Number.MAX_SAFE_INTEGER)
+      - (positionOrderById.get(right.position_id) ?? Number.MAX_SAFE_INTEGER);
+  }).map((selection) => {
     const ballot = ballotById.get(selection.anonymous_ballot_id);
     const voter = ballot?.eligible_voter_id ? voterById.get(ballot.eligible_voter_id) : undefined;
     const position = positionById.get(selection.position_id);
     return {
       id: selection.id,
+      ballotId: selection.anonymous_ballot_id,
       memberId: voter?.member_id ?? 'Unknown',
       voterName: voter ? `${voter.first_name} ${voter.last_name}` : 'Unknown voter',
       ageGroup: voter?.age_group ? groupFromDb[voter.age_group] ?? voter.age_group : 'Unknown',
@@ -178,7 +187,7 @@ export async function getIndividualElectionResults(identifier: string): Promise<
       position: position?.name ?? 'Unknown position',
       choice: selection.is_abstain ? 'Abstain' : position?.nominees.find((nominee) => nominee.id === selection.nominee_id)?.name ?? 'Unknown candidate',
     };
-  }).sort((left, right) => right.submittedAt.localeCompare(left.submittedAt));
+  });
 }
 
 export async function getElectionVoters(electionId: string): Promise<EligibleVoter[]> {
@@ -191,11 +200,17 @@ export async function getElectionVoters(electionId: string): Promise<EligibleVot
   } else {
     rows = assertData(current.data, current.error);
   }
-  return rows.map((row: any) => ({
-    memberId: row.member_id, name: `${row.first_name} ${row.last_name}`, ageGroup: groupFromDb[row.age_group], gender: row.gender, age: row.age, birthDate: row.birth_date,
-    attributes: row.attributes ?? {member_id: row.member_id, first_name: row.first_name, last_name: row.last_name, gender: row.gender ?? '', age: String(row.age ?? ''), birth_date: row.birth_date ?? '', age_group: groupFromDb[row.age_group]},
-    eligible: row.eligible, hasVoted: Boolean(row.participation?.some((item: any) => item.submitted_at)),
-  }));
+  return rows.map((row: any) => {
+    const attributes = row.attributes ?? {member_id: row.member_id, first_name: row.first_name, last_name: row.last_name, gender: row.gender ?? '', age: String(row.age ?? ''), birth_date: row.birth_date ?? '', age_group: groupFromDb[row.age_group]};
+    const nomineeEligible = Object.prototype.hasOwnProperty.call(attributes, 'nominee')
+      ? isCsvEligible(attributes.nominee)
+      : row.eligible;
+    return {
+      memberId: row.member_id, name: `${row.first_name} ${row.last_name}`, ageGroup: groupFromDb[row.age_group], gender: row.gender, age: row.age, birthDate: row.birth_date,
+      attributes, eligible: row.eligible, nomineeEligible,
+      hasVoted: Boolean(row.participation?.some((item: any) => item.submitted_at)),
+    };
+  });
 }
 
 export async function syncElection(election: ElectionEvent, voters?: EligibleVoter[]) {
@@ -218,7 +233,19 @@ export async function syncElection(election: ElectionEvent, voters?: EligibleVot
       })),
     })),
   };
-  const normalizedVoters = voters?.map((voter) => ({...voter, gender: voter.gender ? normalizeGender(voter.gender) : voter.gender}));
+  const normalizedVoters = voters?.map((voter) => {
+    const shouldPersistAttributes = voter.attributes !== undefined || voter.eligible !== undefined || voter.nomineeEligible !== undefined;
+    const attributes = shouldPersistAttributes ? {
+      ...(voter.attributes ?? {}),
+      ...(voter.eligible !== undefined ? {voter: voter.eligible ? 'YES' : 'NO'} : {}),
+      ...(voter.nomineeEligible !== undefined ? {nominee: voter.nomineeEligible ? 'YES' : 'NO'} : {}),
+    } : undefined;
+    return {
+      ...voter,
+      gender: voter.gender ? normalizeGender(voter.gender) : voter.gender,
+      ...(attributes ? {attributes} : {}),
+    };
+  });
   const {error} = await supabase.rpc('sync_election', {p_election: normalizedElection, p_voters: normalizedVoters ?? null});
   if (error) throw new Error(error.message);
   const saved = await getElection(election.id);

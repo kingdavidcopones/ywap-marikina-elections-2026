@@ -84,7 +84,7 @@ test('non-anonymous live results show admin-only individual vote records', async
   const identifiableElection = {...election, anonymousVoting: false, status: 'Open', ballotsSubmitted: 1, eligibleVoters: 1};
   await page.route(`**/api/elections/${eventId}/results`, (route) => route.fulfill({json: {election: identifiableElection, results: []}}));
   await page.route(`**/api/admin/elections/${eventId}/individual-results`, (route) => route.fulfill({json: {records: [{
-    id: 'selection-1', memberId: 'YWAP-1', voterName: 'Test Voter', ageGroup: 'Young Adults', submittedAt: '2026-09-17T04:00:00Z',
+    id: 'selection-1', ballotId: 'ballot-1', memberId: 'YWAP-1', voterName: 'Test Voter', ageGroup: 'Young Adults', submittedAt: '2026-09-17T04:00:00Z',
     position: 'President', choice: 'Candidate A',
   }]}}));
 
@@ -94,27 +94,36 @@ test('non-anonymous live results show admin-only individual vote records', async
   await expect(page.getByRole('tabpanel', {name: 'Individual vote records'}).getByText('Test Voter')).toBeVisible();
   await expect(page.getByRole('tabpanel', {name: 'Individual vote records'}).getByText('Young Adults')).toBeVisible();
   await expect(page.getByRole('tabpanel', {name: 'Individual vote records'}).getByText('Candidate A')).toBeVisible();
+  await expect(page.getByText('Voter 1 of 1')).toBeVisible();
   await expect(page.getByRole('link', {name: 'Download responses'})).toHaveAttribute('href', `/api/admin/elections/${eventId}/individual-results/export`);
 });
 
-test('individual vote records paginate once there are more than a page of records', async ({page}) => {
-  const identifiableElection = {...election, anonymousVoting: false, status: 'Open', ballotsSubmitted: 11, eligibleVoters: 11};
-  const records = Array.from({length: 11}, (_, index) => ({
-    id: `selection-${index}`, memberId: `YWAP-${index}`, voterName: `Voter ${index}`, ageGroup: 'Teens',
-    submittedAt: '2026-09-17T04:00:00Z', position: 'President', choice: 'Candidate A',
-  }));
+test('individual vote records show one complete ballot per voter in submission order', async ({page}) => {
+  const identifiableElection = {...election, anonymousVoting: false, status: 'Open', ballotsSubmitted: 2, eligibleVoters: 2};
+  const records = [
+    {id: 'selection-3', ballotId: 'ballot-2', memberId: 'YWAP-2', voterName: 'Second Voter', ageGroup: 'Young Adults', submittedAt: '2026-09-17T05:00:00Z', position: 'President', choice: 'Candidate B'},
+    {id: 'selection-1', ballotId: 'ballot-1', memberId: 'YWAP-1', voterName: 'First Voter', ageGroup: 'Teens', submittedAt: '2026-09-17T04:00:00Z', position: 'President', choice: 'Candidate A'},
+    {id: 'selection-2', ballotId: 'ballot-1', memberId: 'YWAP-1', voterName: 'First Voter', ageGroup: 'Teens', submittedAt: '2026-09-17T04:00:00Z', position: 'Vice President', choice: 'Candidate C'},
+    {id: 'selection-4', ballotId: 'ballot-2', memberId: 'YWAP-2', voterName: 'Second Voter', ageGroup: 'Young Adults', submittedAt: '2026-09-17T05:00:00Z', position: 'Vice President', choice: 'Candidate D'},
+  ];
   await page.route(`**/api/elections/${eventId}/results`, (route) => route.fulfill({json: {election: identifiableElection, results: []}}));
   await page.route(`**/api/admin/elections/${eventId}/individual-results`, (route) => route.fulfill({json: {records}}));
 
   await page.goto(`/live-results/${eventId}`);
   await page.getByRole('tab', {name: 'Individual'}).click();
   const panel = page.getByRole('tabpanel', {name: 'Individual vote records'});
-  const pagination = page.getByRole('navigation', {name: 'Individual vote record pages'});
+  const pagination = page.getByRole('navigation', {name: 'Individual voter pages'});
   await expect(pagination).toBeVisible();
-  await expect(panel.getByText('Voter 9', {exact: true})).toBeVisible();
-  await expect(panel.getByText('Voter 10', {exact: true})).toHaveCount(0);
-  await pagination.getByRole('button', {name: /next/i}).click();
-  await expect(panel.getByText('Voter 10', {exact: true})).toBeVisible();
+  await expect(panel.getByRole('heading', {name: 'First Voter'})).toBeVisible();
+  await expect(panel.getByText('Candidate A')).toBeVisible();
+  await expect(panel.getByText('Candidate C')).toBeVisible();
+  await expect(panel.getByRole('heading', {name: 'Second Voter'})).toHaveCount(0);
+  await pagination.getByRole('spinbutton', {name: 'Go to page'}).fill('2');
+  await pagination.getByRole('spinbutton', {name: 'Go to page'}).press('Enter');
+  await expect(panel.getByRole('heading', {name: 'Second Voter'})).toBeVisible();
+  await expect(panel.getByText('Candidate B')).toBeVisible();
+  await expect(panel.getByText('Candidate D')).toBeVisible();
+  await expect(panel.getByRole('heading', {name: 'First Voter'})).toHaveCount(0);
 });
 
 test('individual vote records require an admin session', async ({page}) => {

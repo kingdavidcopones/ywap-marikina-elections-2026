@@ -32,6 +32,7 @@ import {HStack, Layout, LayoutContent, LayoutFooter, StackItem, VStack} from '@a
 import {Icon} from '@astryxdesign/core/Icon';
 import {Pagination} from '@astryxdesign/core/Pagination';
 import {Selector} from '@astryxdesign/core/Selector';
+import {StatusDot} from '@astryxdesign/core/StatusDot';
 import {Tab, TabList} from '@astryxdesign/core/TabList';
 import {Table, pixel, proportional} from '@astryxdesign/core/Table';
 import {Text} from '@astryxdesign/core/Text';
@@ -39,7 +40,15 @@ import {TextArea} from '@astryxdesign/core/TextArea';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {useToast} from '@astryxdesign/core/Toast';
 import {Typeahead, TypeaheadItem, type SearchSource, type SearchableItem} from '@astryxdesign/core/Typeahead';
-import {normalizeGender, parseVoters} from '@/lib/csv';
+import {
+  ELIGIBLE_VOTER_CSV_COLUMNS,
+  getMemberCsvHeaders,
+  isCsvEligibilityValue,
+  isCsvEligible,
+  normalizeCsvBirthDate,
+  normalizeGender,
+  parseVoters,
+} from '@/lib/csv';
 import {ElectionEditorSkeleton} from '@/components/loading-states';
 import {fetchElection, fetchVoters, removeElection, saveElection, uploadCandidateImage} from '@/lib/api';
 import {
@@ -62,7 +71,8 @@ interface VoterRow extends Record<string, unknown> {
   memberId: string;
   name: string;
   ageGroup: string;
-  eligible: 'Yes' | 'No';
+  voterEligibility: 'Yes' | 'No';
+  nomineeEligibility: 'Yes' | 'No';
 }
 
 type UploadStatus = {type: 'error' | 'success'; message: string};
@@ -216,11 +226,15 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     [election, voters],
   );
   const eligibleIds = useMemo(() => new Set(eventVoters.map((voter) => voter.memberId)), [eventVoters]);
+  const nomineeVoters = useMemo(() => voters.filter((voter) => (
+    voter.nomineeEligible ?? voter.eligible ?? false
+  )), [voters]);
   const voterRows = useMemo<VoterRow[]>(() => voters.map((voter) => ({
     ...voter,
-    eligible: eligibleIds.has(voter.memberId) ? 'Yes' : 'No',
+    voterEligibility: eligibleIds.has(voter.memberId) ? 'Yes' : 'No',
+    nomineeEligibility: (voter.nomineeEligible ?? eligibleIds.has(voter.memberId)) ? 'Yes' : 'No',
   })), [eligibleIds, voters]);
-  const searchSource = useMemo(() => voterSource(eventVoters), [eventVoters]);
+  const searchSource = useMemo(() => voterSource(nomineeVoters), [nomineeVoters]);
   const filterColumns = useMemo(() => Array.from(new Set(eventVoters.flatMap((voter) => Object.keys(voter.attributes ?? {})))).sort(), [eventVoters]);
   const filterValues = useMemo(() => Object.fromEntries(filterColumns.map((column) => {
     const unique = new Map<string, string>();
@@ -249,7 +263,9 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
   function persist(updated: ElectionEvent, nextVoters?: EligibleVoter[]) {
     setElection(updated);
     if (nextVoters) setVoters(nextVoters);
-    void saveElection(updated, nextVoters).then(setElection).catch((cause) => {
+    void saveElection(updated, nextVoters).then((saved) => {
+      setElection({...saved, eligibleVoterIds: updated.eligibleVoterIds});
+    }).catch((cause) => {
       toast({body: cause instanceof Error ? cause.message : 'The election could not be saved.', type: 'error', uniqueID: 'election-save-error'});
     });
   }
@@ -401,7 +417,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
 
   function openCandidateEditor(positionId: string, nominee: Nominee) {
     setEditingCandidate({positionId, nomineeId: nominee.id, name: nominee.name});
-    const voter = eventVoters.find((item) => item.name === nominee.name);
+    const voter = voters.find((item) => item.name === nominee.name);
     setCandidateVoter(voter ? toVoterItem(voter) : toVoterItem({
       memberId: nominee.id,
       name: nominee.name,
@@ -436,7 +452,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
         } : nominee),
       } : position);
       const saved = await saveElection({...election, positions: updatedPositions});
-      setElection(saved);
+      setElection({...saved, eligibleVoterIds: election.eligibleVoterIds});
       setEditingCandidate(null);
       setCandidateVoter(null);
       setCandidateEditImage(null);
@@ -461,7 +477,8 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
     } : position);
     setIsRemovingCandidate(true);
     try {
-      setElection(await saveElection({...election, positions: updatedPositions}));
+      const saved = await saveElection({...election, positions: updatedPositions});
+      setElection({...saved, eligibleVoterIds: election.eligibleVoterIds});
       toast({body: `${deletingCandidate.name} was removed from this ballot.`, uniqueID: 'candidate-removed'});
       setDeletingCandidate(null);
     } catch (cause) {
@@ -596,7 +613,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
         }],
       } : item);
       const saved = await saveElection({...election, positions: updatedPositions});
-      setElection(saved);
+      setElection({...saved, eligibleVoterIds: election.eligibleVoterIds});
       setSelectedVoter(null);
       setCandidateImage(null);
       setCandidatePositionId(null);
@@ -620,7 +637,29 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       return;
     }
 
-    const records = parseVoters(await file.text());
+    const csv = await file.text();
+    const headers = getMemberCsvHeaders(csv);
+    const missingColumns = ELIGIBLE_VOTER_CSV_COLUMNS.filter((column) => !headers.includes(column));
+    if (missingColumns.length) {
+      setVoterUploadStatus({
+        type: 'error',
+        message: `Missing required column${missingColumns.length === 1 ? '' : 's'}: ${missingColumns.join(', ')}.`,
+      });
+      return;
+    }
+
+    const records = parseVoters(csv);
+    const invalidEligibilityRow = records.findIndex((record) => (
+      !isCsvEligibilityValue(record.voter) || !isCsvEligibilityValue(record.nominee)
+    ));
+    if (invalidEligibilityRow >= 0) {
+      setVoterUploadStatus({
+        type: 'error',
+        message: `Row ${invalidEligibilityRow + 1}: Voter and Nominee must be YES, NO, or blank.`,
+      });
+      return;
+    }
+
     const importedVoters: EligibleVoter[] = records.filter((record) => record.member_id?.trim()).map((record) => ({
       memberId: record.member_id.trim(),
       firstName: record.first_name?.trim(),
@@ -628,25 +667,30 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       name: `${record.first_name?.trim() ?? ''} ${record.last_name?.trim() ?? ''}`.trim(),
       gender: record.gender?.trim() ? normalizeGender(record.gender) : undefined,
       age: Number(record.age),
-      birthDate: new Date(record.birth_date).toISOString().slice(0, 10),
+      birthDate: normalizeCsvBirthDate(record.birth_date ?? '') ?? undefined,
       ageGroup: record.age_group?.trim(),
-      attributes: record,
+      eligible: isCsvEligible(record.voter),
+      nomineeEligible: isCsvEligible(record.nominee),
+      attributes: {
+        ...record,
+        voter: isCsvEligible(record.voter) ? 'YES' : 'NO',
+        nominee: isCsvEligible(record.nominee) ? 'YES' : 'NO',
+      },
     }));
     if (!importedVoters.length) {
-      setVoterUploadStatus({type: 'error', message: 'We couldn’t find a member_id column with voter records. Check the CSV and try again.'});
+      setVoterUploadStatus({type: 'error', message: 'We couldn’t find any member records. Check the CSV and try again.'});
       return;
     }
     const mergedVoters = mode === 'add'
       ? [...voters.filter((voter) => !new Set(importedVoters.map((item) => item.memberId)).has(voter.memberId)), ...importedVoters]
       : importedVoters;
-    const eligibleVoterIds = mergedVoters.map((voter) => voter.memberId);
+    const eligibleVoterIds = mergedVoters.filter((voter) => voter.eligible).map((voter) => voter.memberId);
     persist({...election, eligibleVoterIds, eligibleVoters: eligibleVoterIds.length}, mergedVoters);
     setVotersPage(1);
-    const result = mode === 'add'
-      ? `${importedVoters.length} eligible voter${importedVoters.length === 1 ? '' : 's'} imported.`
-      : `Eligible voter list replaced with ${eligibleVoterIds.length} voter${eligibleVoterIds.length === 1 ? '' : 's'}.`;
+    const nomineeCount = mergedVoters.filter((voter) => voter.nomineeEligible).length;
+    const result = `${mode === 'add' ? `${importedVoters.length} member record${importedVoters.length === 1 ? '' : 's'} imported` : `Member list replaced with ${mergedVoters.length} record${mergedVoters.length === 1 ? '' : 's'}`}. ${eligibleVoterIds.length} voter${eligibleVoterIds.length === 1 ? '' : 's'} and ${nomineeCount} nominee${nomineeCount === 1 ? '' : 's'} eligible.`;
     setVoterUploadStatus({type: 'success', message: result});
-    toast({body: mode === 'add' ? 'Eligible voters added.' : 'Eligible voter list replaced.', uniqueID: 'eligible-voters-imported'});
+    toast({body: mode === 'add' ? 'Member eligibility added.' : 'Member eligibility list replaced.', uniqueID: 'eligible-voters-imported'});
   }
 
   async function copyVoteLink() {
@@ -809,7 +853,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
           </header>
 
           {!eventVoters.length ? (
-            <Banner status="warning" title="Add eligible voters first" description="Candidates must come from this election’s voter list. Open Eligible voters to upload the list." container="section" />
+            <Banner status="warning" title="Add eligible voters before publishing" description="Open Eligible voters and mark at least one member YES in the Voter column." container="section" />
           ) : null}
 
           <VStack gap={5}>
@@ -865,7 +909,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                         <section className="candidate-form-grid">
                           <Typeahead<VoterItem>
                             label="Candidate"
-                            description="Choose someone from this election’s eligible voter list."
+                            description="Choose a member marked YES in the Nominee column."
                             placeholder="Search by name or Member ID"
                             searchSource={searchSource}
                             value={selectedVoter}
@@ -920,7 +964,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
                         isCompact
                         icon={<Icon icon={UserCircleDashedIcon} size="lg" />}
                         title="No candidates yet"
-                        description="Add an eligible voter as the first candidate for this position."
+                        description="Add a nominee-eligible member as the first candidate for this position."
                         actions={
                           <Button
                             label={`Add a candidate for ${position.name}`}
@@ -954,7 +998,7 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
           <header className="section-heading-row">
             <VStack gap={1}>
               <Heading level={2}>Eligible voters</Heading>
-              <Text color="secondary">Upload a CSV to add or replace eligible voters. Replace the template’s example row before uploading.</Text>
+              <Text color="secondary">Upload member eligibility. YES enables Voter or Nominee eligibility; NO and blank disable it.</Text>
             </VStack>
             <HStack gap={2} align="center" wrap="wrap">
               <Button label="Download CSV Template" href="/api/csv-template/eligible-voters" variant="secondary" icon={<DownloadSimpleIcon />} />
@@ -1040,7 +1084,8 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
               rowIndexStart={votersPageStart + 1}
               rowCount={voterRows.length}
               columns={[
-                {key: 'eligible', header: 'Eligible', width: pixel(100)},
+                {key: 'voterEligibility', header: 'Voter', width: pixel(110), renderCell: (row) => <HStack gap={1} align="center"><StatusDot variant={row.voterEligibility === 'Yes' ? 'success' : 'neutral'} label={`Voter eligible: ${row.voterEligibility}`} /><Text>{row.voterEligibility}</Text></HStack>},
+                {key: 'nomineeEligibility', header: 'Nominee', width: pixel(120), renderCell: (row) => <HStack gap={1} align="center"><StatusDot variant={row.nomineeEligibility === 'Yes' ? 'success' : 'neutral'} label={`Nominee eligible: ${row.nomineeEligibility}`} /><Text>{row.nomineeEligibility}</Text></HStack>},
                 {key: 'memberId', header: 'Member ID', width: pixel(160)},
                 {key: 'name', header: 'Member name', width: proportional(2)},
                 {key: 'ageGroup', header: 'Age group', width: proportional(1)},
@@ -1049,8 +1094,8 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
             ) : (
               <EmptyState
                 icon={<Icon icon={UserListIcon} size="lg" />}
-                title="No eligible voters yet"
-                description="Use the Upload voter data button to add people who can vote in this election."
+                title="No member eligibility records yet"
+                description="Upload the CSV template to set who can vote and who can be a nominee."
               />
             )}
             {voterRows.length > VOTERS_PAGE_SIZE ? (
@@ -1418,14 +1463,14 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       <Dialog isOpen={editingCandidate !== null} onOpenChange={(open) => { if (!open && !isUpdatingCandidate) { setEditingCandidate(null); setCandidateVoter(null); } }} purpose="form" width={560}>
         <Layout
           height="auto"
-          header={<DialogHeader title="Edit candidate" subtitle="Candidate names come from this election’s eligible voter list." onOpenChange={(open) => { if (!open && !isUpdatingCandidate) { setEditingCandidate(null); setCandidateVoter(null); } }} />}
+          header={<DialogHeader title="Edit candidate" subtitle="Candidate names come from members marked YES in the Nominee column." onOpenChange={(open) => { if (!open && !isUpdatingCandidate) { setEditingCandidate(null); setCandidateVoter(null); } }} />}
           content={
             <LayoutContent>
               <form id="edit-candidate-form" onSubmit={(event) => void updateCandidate(event)}>
                 <FormLayout>
                   <Typeahead<VoterItem>
                     label="Candidate name"
-                    description="Choose someone from this election’s eligible voter list."
+                    description="Choose a member marked YES in the Nominee column."
                     placeholder="Search by name or Member ID"
                     searchSource={searchSource}
                     value={candidateVoter}
@@ -1463,8 +1508,8 @@ export function ElectionEventEditor({eventId}: {eventId: string}) {
       <AlertDialog
         isOpen={isReplaceVotersOpen}
         onOpenChange={setIsReplaceVotersOpen}
-        title="Replace all eligible voters?"
-        description="The current eligible voter list will be lost and replaced by the Member IDs in the CSV you choose. This can’t be undone."
+        title="Replace all member eligibility?"
+        description="The current voter and nominee eligibility will be replaced by the Member IDs and Voter/Nominee values in the CSV you choose. This can’t be undone."
         actionLabel="Choose replacement CSV"
         actionVariant="destructive"
         onAction={() => {setIsReplaceVotersOpen(false); replaceVotersInputRef.current?.click();}}

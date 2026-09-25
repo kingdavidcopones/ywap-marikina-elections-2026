@@ -20,6 +20,7 @@ export type EligibleVoter = {
   birthDate?: string;
   hasVoted?: boolean;
   eligible?: boolean;
+  nomineeEligible?: boolean;
   attributes?: Record<string, string>;
 };
 
@@ -73,6 +74,7 @@ export type ElectionResult = {
 
 export interface IndividualVoteRecord extends Record<string, unknown> {
   id: string;
+  ballotId: string;
   memberId: string;
   voterName: string;
   ageGroup: string;
