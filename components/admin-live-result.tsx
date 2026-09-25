@@ -295,7 +295,10 @@ export function AdminLiveResult({eventId}: {eventId: string}) {
                 <HStack justify="between" gap={4} align="start" wrap="wrap">
                   <VStack gap={1}>
                     <Heading level={3}>{selectedBallot.voterName}</Heading>
-                    <Text color="secondary">{selectedBallot.ageGroup} · Member ID {selectedBallot.memberId}</Text>
+                    <HStack gap={2} align="center" wrap="wrap">
+                      <Badge variant="neutral" label={selectedBallot.ageGroup} />
+                      <Badge variant="neutral" label={selectedBallot.memberId} />
+                    </HStack>
                   </VStack>
                   <VStack gap={1} hAlign="end">
                     <Text weight="semibold" hasTabularNumbers>Voter {individualPage} of {individualBallots.length}</Text>
