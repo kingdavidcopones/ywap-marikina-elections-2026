@@ -19,7 +19,6 @@ import {Icon} from '@astryxdesign/core/Icon';
 import {SelectableCard} from '@astryxdesign/core/SelectableCard';
 import {Text} from '@astryxdesign/core/Text';
 import {
-  deterministicShuffle,
   type ElectionEvent,
   type Position,
 } from '@/lib/election-data';
@@ -70,12 +69,7 @@ export function BallotFlow({ballotSlug, fromVerification = false}: {ballotSlug?:
   );
   const current = ballotPositions[activeIndex];
 
-  const nominees = useMemo(
-    () => current && voter
-      ? deterministicShuffle(current.nominees, `${voter.memberId}:${current.id}`)
-      : [],
-    [current, voter],
-  );
+  const nominees = current?.nominees ?? [];
 
   function select(position: Position, nomineeId: string) {
     const next = {...selections, [position.id]: nomineeId};

@@ -113,14 +113,3 @@ export function eligibleVotersForEvent(event: ElectionEvent, voters: EligibleVot
   const eligibleIds = new Set(event.eligibleVoterIds);
   return voters.filter((voter) => eligibleIds.has(voter.memberId));
 }
-
-export function deterministicShuffle<T>(items: T[], seed: string): T[] {
-  const next = [...items];
-  let hash = Array.from(seed).reduce((value, character) => ((value << 5) - value + character.charCodeAt(0)) | 0, 0);
-  for (let index = next.length - 1; index > 0; index -= 1) {
-    hash = (hash * 1664525 + 1013904223) | 0;
-    const target = Math.abs(hash) % (index + 1);
-    [next[index], next[target]] = [next[target], next[index]];
-  }
-  return next;
-}
